@@ -176,11 +176,15 @@ class FatSecretRepository(
             val today = FatSecretDate.today()
             val entries = foodClient.getDailyEntries(today)
             val daily: DailyNutrition = NutritionCalculator.sum(entries)
+            // Same fetch as `daily`, no extra request: today's calories grouped
+            // by meal, for the "Hoje" tab's distribution card (planning.md §9,
+            // Etapa 4).
+            val meals = NutritionCalculator.mealBreakdown(entries)
             // Secondary, best-effort: the last 7 days of calories for the tall
             // widget's chart. A failure here must not fail the whole sync, so it
             // is caught separately and simply leaves the previous history intact.
             val weekly = runCatching { fetchWeeklyCalories(today, daily.calories) }.getOrNull()
-            cacheStore.saveSuccess(daily, System.currentTimeMillis(), weekly)
+            cacheStore.saveSuccess(daily, System.currentTimeMillis(), weekly, meals)
             // The weight widget rides the same sync cycle (app open, goal change,
             // and the 30-minute worker), so a new weighing logged in FatSecret
             // reaches the home screen without any extra scheduling. It is fully

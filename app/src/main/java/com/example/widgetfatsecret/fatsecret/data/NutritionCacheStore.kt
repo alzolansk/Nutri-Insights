@@ -11,6 +11,7 @@ import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.example.widgetfatsecret.fatsecret.domain.DailyNutrition
+import com.example.widgetfatsecret.fatsecret.domain.MealTotal
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -32,6 +33,12 @@ data class NutritionSnapshot(
      * until a sync has populated it; used only by the tall widget's weekly chart.
      */
     val weeklyCalories: List<Double> = emptyList(),
+    /**
+     * Today's calories grouped by meal, largest share first. Empty until a
+     * sync has populated it; used by the "Hoje" tab's meal-distribution card
+     * (planning.md §9, Etapa 4). Not persisted for other days.
+     */
+    val mealBreakdown: List<MealTotal> = emptyList(),
 ) {
     val hasEntries: Boolean get() = daily.entryCount > 0
 }
@@ -63,6 +70,15 @@ class NutritionCacheStore(private val context: Context) {
                 ?.split(',')
                 ?.mapNotNull { it.toDoubleOrNull() }
                 ?: emptyList(),
+            mealBreakdown = p[KEY_MEALS]
+                ?.split(',')
+                ?.mapNotNull { entry ->
+                    val parts = entry.split(':')
+                    if (parts.size != 2) return@mapNotNull null
+                    val calories = parts[1].toDoubleOrNull() ?: return@mapNotNull null
+                    MealTotal(parts[0], calories)
+                }
+                ?: emptyList(),
         )
     }
 
@@ -80,8 +96,16 @@ class NutritionCacheStore(private val context: Context) {
      * [weekly] is the last few days' calorie totals for the tall widget's chart.
      * When it is null (the secondary weekly fetch failed) the previously stored
      * history is left untouched, so a hiccup never blanks the chart.
+     *
+     * [mealBreakdown] is derived from the same today-entries fetch as [daily]
+     * (no extra network call), so it is always written together with it.
      */
-    suspend fun saveSuccess(daily: DailyNutrition, syncMillis: Long, weekly: List<Double>? = null) {
+    suspend fun saveSuccess(
+        daily: DailyNutrition,
+        syncMillis: Long,
+        weekly: List<Double>? = null,
+        mealBreakdown: List<MealTotal> = emptyList(),
+    ) {
         context.cacheDataStore.edit { p ->
             p[KEY_CALORIES] = daily.calories
             p[KEY_PROTEIN] = daily.protein
@@ -93,6 +117,7 @@ class NutritionCacheStore(private val context: Context) {
             p[KEY_CONNECTED] = true
             p[KEY_HAS_DATA] = true
             if (weekly != null) p[KEY_WEEKLY] = weekly.joinToString(",")
+            p[KEY_MEALS] = mealBreakdown.joinToString(",") { "${it.meal}:${it.calories}" }
             p.remove(KEY_ERROR)
         }
     }
@@ -122,6 +147,7 @@ class NutritionCacheStore(private val context: Context) {
         val KEY_CONNECTED = booleanPreferencesKey("connected")
         val KEY_HAS_DATA = booleanPreferencesKey("has_data")
         val KEY_WEEKLY = stringPreferencesKey("weekly_calories")
+        val KEY_MEALS = stringPreferencesKey("meal_breakdown")
     }
 }
 

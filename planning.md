@@ -1,7 +1,7 @@
 # Plano de Evolução — WidgetFatSecret → Nutri Insights
 
-> **Status:** Etapas 0, 1, 2 e 3 implementadas (ver §9). Etapas 4–11 seguem apenas
-> planejadas, aguardando aprovação para prosseguir.
+> **Status:** Etapas 0, 1, 2, 3 e 4 implementadas (ver §9). Etapas 5–11 seguem
+> apenas planejadas, aguardando aprovação para prosseguir.
 > **Premissa central:** os widgets de tela inicial são o que já funciona hoje e são
 > intocáveis. Toda a evolução é **aditiva** — nada da infraestrutura atual é removido
 > antes de existir paridade verificada.
@@ -455,7 +455,7 @@ Etapa 11 Remoção do legado
 
 ---
 
-### Etapa 4 — Tela Hoje
+### Etapa 4 — Tela Hoje ✅ concluída (2026-07-25)
 
 - **Objetivo:** anel de meta com o restante em número grande, macros com
   consumido/meta e percentual, distribuição por refeição do dia, "Leitura do dia"
@@ -473,6 +473,53 @@ Etapa 11 Remoção do legado
 - **Build e testes:** `:app:testDebugUnitTest`, `:app:assembleDebug`. Comparar
   lado a lado: número do app × número do widget × número do app FatSecret.
   Alterar uma meta e confirmar que app **e** widget atualizam.
+- **Status real:** implementado.
+  [`ui/today/TodayViewModel.kt`](app/src/main/java/com/example/widgetfatsecret/ui/today/TodayViewModel.kt)
+  é só leitura — expõe `repo.uiState` como `StateFlow` e **não dispara nenhum
+  sync** (o sync de abertura continua exclusivamente no `FatSecretViewModel`
+  legado, mantido vivo pela `MainActivity` independente de `USE_LEGACY_UI`; ver
+  risco R5).
+  [`ui/today/TodayScreen.kt`](app/src/main/java/com/example/widgetfatsecret/ui/today/TodayScreen.kt)
+  monta 4 `StatCard` (Etapa 2): anel de meta (`GoalRing`, restante ou excedente
+  em número grande), macros (proteína/carbo/gordura com barra colorida
+  cyan/amber/violet + `consumido/meta g • percentual`), refeições do dia
+  (nome traduzido + kcal + % do total) e "Leitura do dia" com até dois
+  insights. O `SyncStatusChip` fica sempre visível no topo. Estados
+  "desconectado" e "aguardando primeira sincronização" usam `EmptyState` e são
+  visualmente distintos de "sincronizado com zero registros" (que passa pelo
+  conteúdo normal, com a `SyncStatusChip` mostrando "Sincronizado" e o insight
+  "Nenhum alimento registrado hoje" — nunca uma tela vazia).
+  **Distribuição por refeição** foi persistida: `NutritionCacheStore` ganhou o
+  campo `mealBreakdown: List<MealTotal>` e a chave nova `meal_breakdown` (CSV
+  `refeição:calorias`, mesmo padrão de `weekly_calories`) — as chaves
+  existentes não foram tocadas. `FatSecretRepository.syncLocked()` calcula o
+  breakdown a partir das MESMAS `entries` já buscadas para `daily` (nenhuma
+  chamada de rede extra, ao contrário do `weekly`, que é best-effort à parte).
+  Duas funções puras novas em `NutritionCalculator`: `mealBreakdown(entries)`
+  (agrupa e ordena por calorias, desempate estável pela ordem de aparição) e
+  `dominantMealShare(meals)` (retorna `null` com menos de 2 refeições ou total
+  zero — "distribuição" de uma refeição só não é um padrão). `NutritionFormat`
+  ganhou `mealLabel` (traduz os valores fixos do FatSecret: Breakfast/Lunch/
+  Dinner/Other; desconhecido passa direto), `mealShareText` ("Jantar concentra
+  43% das calorias de hoje" — descritivo, sem julgamento) e `timeAgo`
+  (buckets grosseiros "agora"/"há N min"/"há N h"/"há N d" para o detalhe do
+  chip de sync). O `SyncStatus` do design system (Etapa 2) é mapeado a partir
+  do `NutritionSnapshot` dentro de `TodayScreen.kt` (função privada
+  `toChipStatus()`), não no design system, como a Etapa 2 já previa.
+  **Nenhum widget, receiver, manifesto ou as chaves de cache existentes foram
+  tocados** — regra de ouro reverificada (`grep` sem hits de `ui.*` em
+  `fatsecret/`).
+  `:app:testDebugUnitTest` (**77 testes, 0 falhas** — 68 anteriores + 9 novos
+  cobrindo `mealBreakdown`, `dominantMealShare`, `mealLabel`, `mealShareText` e
+  `timeAgo`) e `:app:assembleDebug` verdes.
+  **Pendência:** paridade numérica lado a lado com a `MainScreen` antiga e o
+  app FatSecret, e o checklist de fumaça dos widgets, não foram verificados
+  visualmente nesta sessão — sem dispositivo/emulador neste ambiente (mesma
+  limitação de todas as etapas anteriores). Como nenhum arquivo de
+  widget/manifesto/DataStore existente foi alterado (só uma chave nova
+  aditiva), o risco de regressão nos widgets é baixo, mas a conferência visual
+  da tela Hoje em si (ring, cores dos macros, contraste) ainda depende de um
+  dispositivo real.
 
 ---
 

@@ -56,3 +56,9 @@ enum class InsightType {
 }
 
 data class Insight(val type: InsightType, val value: Double = 0.0)
+
+/** Calorie total for one meal slot (breakfast/lunch/dinner/other), today only. */
+data class MealTotal(val meal: String, val calories: Double)
+
+/** How much of today's calories the single largest meal accounts for. */
+data class MealShareInsight(val meal: String, val percent: Double)

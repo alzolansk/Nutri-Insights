@@ -3,9 +3,11 @@ package com.example.widgetfatsecret
 import com.example.widgetfatsecret.fatsecret.domain.DailyNutrition
 import com.example.widgetfatsecret.fatsecret.domain.FoodEntry
 import com.example.widgetfatsecret.fatsecret.domain.InsightType
+import com.example.widgetfatsecret.fatsecret.domain.MealTotal
 import com.example.widgetfatsecret.fatsecret.domain.NutritionCalculator
 import com.example.widgetfatsecret.fatsecret.domain.NutritionGoals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class NutritionCalculatorTest {
@@ -92,5 +94,51 @@ class NutritionCalculatorTest {
         val insight = NutritionCalculator.buildInsight(daily, zeroGoals)
         assertEquals(InsightType.PERCENT_OF_DAILY, insight.type)
         assertEquals(0.0, insight.value, 0.0)
+    }
+
+    @Test
+    fun mealBreakdownGroupsAndSortsByCaloriesDescending() {
+        val entries = listOf(
+            FoodEntry(meal = "Breakfast", calories = 200.0),
+            FoodEntry(meal = "Dinner", calories = 500.0),
+            FoodEntry(meal = "Breakfast", calories = 100.0),
+            FoodEntry(meal = "Lunch", calories = 300.0),
+        )
+        val breakdown = NutritionCalculator.mealBreakdown(entries)
+        assertEquals(3, breakdown.size)
+        assertEquals(MealTotal("Dinner", 500.0), breakdown[0])
+        // Breakfast and Lunch tie at 300.0; sortedByDescending is stable, so the
+        // one that appeared first among the entries (Breakfast) stays first.
+        assertEquals(MealTotal("Breakfast", 300.0), breakdown[1])
+        assertEquals(MealTotal("Lunch", 300.0), breakdown[2])
+    }
+
+    @Test
+    fun mealBreakdownOfEmptyEntriesIsEmpty() {
+        assertEquals(emptyList<MealTotal>(), NutritionCalculator.mealBreakdown(emptyList()))
+    }
+
+    @Test
+    fun dominantMealShareNullWithFewerThanTwoMeals() {
+        assertNull(NutritionCalculator.dominantMealShare(emptyList()))
+        assertNull(NutritionCalculator.dominantMealShare(listOf(MealTotal("Lunch", 400.0))))
+    }
+
+    @Test
+    fun dominantMealSharePicksLargestAsPercentOfTotal() {
+        val meals = listOf(
+            MealTotal("Dinner", 430.0),
+            MealTotal("Lunch", 370.0),
+            MealTotal("Breakfast", 200.0),
+        )
+        val share = NutritionCalculator.dominantMealShare(meals)
+        assertEquals("Dinner", share?.meal)
+        assertEquals(43.0, share!!.percent, 0.001)
+    }
+
+    @Test
+    fun dominantMealShareNullWhenTotalIsZero() {
+        val meals = listOf(MealTotal("Lunch", 0.0), MealTotal("Dinner", 0.0))
+        assertNull(NutritionCalculator.dominantMealShare(meals))
     }
 }

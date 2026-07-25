@@ -85,4 +85,32 @@ object NutritionCalculator {
         }
         return Insight(InsightType.PERCENT_OF_DAILY, percent(daily.calories, goals.caloriesKcal))
     }
+
+    /**
+     * Calorie totals grouped by meal, largest share first. Built from today's
+     * raw entries only — meal-level data is not persisted for other days (see
+     * planning.md §4, MVP recommendation).
+     */
+    fun mealBreakdown(entries: List<FoodEntry>): List<MealTotal> {
+        if (entries.isEmpty()) return emptyList()
+        val byMeal = LinkedHashMap<String, Double>()
+        for (e in entries) {
+            byMeal[e.meal] = (byMeal[e.meal] ?: 0.0) + e.calories
+        }
+        return byMeal.map { (meal, calories) -> MealTotal(meal, calories) }
+            .sortedByDescending { it.calories }
+    }
+
+    /**
+     * The single largest meal's share of today's calories. Null when there are
+     * fewer than two meals (a "distribution" of one is not a pattern worth
+     * reporting) or when there are no calories to divide.
+     */
+    fun dominantMealShare(meals: List<MealTotal>): MealShareInsight? {
+        if (meals.size < 2) return null
+        val total = meals.sumOf { it.calories }
+        if (total <= 0.0) return null
+        val top = meals.maxByOrNull { it.calories } ?: return null
+        return MealShareInsight(top.meal, top.calories / total * 100.0)
+    }
 }

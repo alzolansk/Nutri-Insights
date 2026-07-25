@@ -2,15 +2,20 @@
 
 Atualizado em: 2026-07-25
 
-> **Nota de sessão (2026-07-25, 10ª parte) — LEIA PRIMEIRO:** a **Etapa 3 —
-> casca de navegação** do `planning.md` foi implementada. `MainActivity` agora
-> abre, por padrão, o novo `AppShell` (5 abas + Metas/Conta, todas placeholder
-> ainda) em vez da UI antiga; a UI antiga continua no projeto, alcançável
-> recompilando com `USE_LEGACY_UI = true` em `MainActivity.kt`. **A frente de
-> trabalho ativa continua sendo `planning.md`, não as seções 1–19 abaixo**
-> (histórico de ajustes dos widgets, ainda válido como referência). Próxima
-> etapa: **Etapa 4 — Tela Hoje**. Detalhes desta sessão na seção 22. Etapas
-> 0–1 na seção 20; Etapa 2 na seção 21.
+> **Nota de sessão (2026-07-25, 11ª parte) — LEIA PRIMEIRO:** a **Etapa 4 —
+> Tela Hoje** do `planning.md` foi implementada. A rota `Hoje` do `AppShell`
+> agora mostra dados reais (anel de meta, macros, refeições, "Leitura do dia",
+> chip de sync) em vez do placeholder da Etapa 3. **A frente de trabalho ativa
+> continua sendo `planning.md`, não as seções 1–19 abaixo** (histórico de
+> ajustes dos widgets, ainda válido como referência). Próxima etapa: **Etapa 5
+> — Metas e conta**. Detalhes desta sessão na seção 23. Etapas 0–1 na seção 20;
+> Etapa 2 na seção 21; Etapa 3 na seção 22.
+>
+> Nota de sessão (2026-07-25, 10ª parte): a **Etapa 3 — casca de navegação** do
+> `planning.md` foi implementada. `MainActivity` agora abre, por padrão, o novo
+> `AppShell` (5 abas + Metas/Conta) em vez da UI antiga; a UI antiga continua
+> no projeto, alcançável recompilando com `USE_LEGACY_UI = true` em
+> `MainActivity.kt`. Detalhes na seção 22.
 >
 > Nota de sessão (2026-07-25, 9ª parte): Etapas 0, 1 e 2 do `planning.md`
 > implementadas (rede de segurança, camada de histórico, design system).
@@ -1117,3 +1122,127 @@ topo).
 - **Próximo passo:** Etapa 4 — Tela Hoje (planning.md §9), consumindo
   `NutritionSnapshot` via um novo `TodayViewModel` dentro da rota `Hoje` do
   `AppShell`.
+
+## 23. Sessão 2026-07-25 (11ª parte) — Etapa 4 do planning.md: tela Hoje
+
+### Contexto
+
+Continuação direta da seção 22. As Etapas 0–3 já estavam feitas (histórico de
+dados, design system, casca de navegação). Esta sessão implementou a
+**Etapa 4 — Tela Hoje**: a primeira rota do `AppShell` a sair do estado
+placeholder e mostrar dados reais.
+
+### O que foi feito
+
+- **[`ui/today/TodayViewModel.kt`](app/src/main/java/com/example/widgetfatsecret/ui/today/TodayViewModel.kt)**
+  (novo): só leitura. Expõe `repo.uiState` (o mesmo `Flow<NutritionUiState>`
+  que o `FatSecretViewModel` legado já usava) como `StateFlow` via
+  `AppContainer.get(application).repository`. **Não dispara sync algum** — o
+  sync de abertura do app continua exclusivamente no `FatSecretViewModel`
+  legado (instanciado pela `MainActivity` independentemente de
+  `USE_LEGACY_UI`, ver seção 22) e no `SyncWorker` periódico. Isso evita o
+  risco R5 do planning.md (§10): cada aba nova com seu próprio ViewModel não
+  pode virar mais um disparo de sync ao abrir.
+- **[`ui/today/TodayScreen.kt`](app/src/main/java/com/example/widgetfatsecret/ui/today/TodayScreen.kt)**
+  (novo): quatro `StatCard` (Etapa 2) em coluna rolável —
+  1. **Anel de meta** (`GoalRing`): número grande no centro é o restante
+     (`kcal restantes`) ou o excedente com sinal (`+240 kcal acima da meta`);
+     o metadado do card mostra `consumido / meta kcal`.
+  2. **Macronutrientes**: uma linha por macro (proteína=cyan, carboidratos=
+     amber, gorduras=violet) com `consumido/meta g • percentual` e uma
+     `LinearProgressIndicator` colorida por macro.
+  3. **Refeições**: nome traduzido (`NutritionFormat.mealLabel`) + kcal + %
+     do total do dia, ordenado da maior para a menor.
+  4. **Leitura do dia**: até dois insights — o insight único já existente
+     (`NutritionCalculator.buildInsight`, reaproveitado sem alteração) mais um
+     insight novo sobre a refeição dominante, só quando há ≥ 2 refeições e
+     calorias > 0.
+  - `SyncStatusChip` (Etapa 2) fica sempre visível no topo, com o detalhe
+    "há N min/h/d" vindo de `NutritionFormat.timeAgo` (novo). O mapeamento
+    `NutritionSnapshot` → `SyncStatus` do design system é uma função privada
+    (`toChipStatus()`) dentro do próprio `TodayScreen.kt` — como a Etapa 2 já
+    previa, esse mapeamento fica na camada de tela/ViewModel, não no design
+    system.
+  - Dois estados cobrem "desconectado" e "conectado mas nunca sincronizado
+    com sucesso" via `EmptyState`; o caso "sincronizado com zero registros"
+    passa pelo conteúdo normal (chip "Sincronizado" + insight "Nenhum
+    alimento registrado hoje"), o que os torna visualmente distintos, como
+    a Etapa 4 exige (slide 10).
+- **`ui/navigation/AppShell.kt`**: a rota `Route.Hoje` agora renderiza
+  `TodayRoute()` em vez do `PlaceholderScreen`. As outras 5 rotas continuam
+  como estavam.
+
+### Distribuição por refeição — dado novo, persistido de forma aditiva
+
+O deck pede "o jantar é 43% das calorias", e `planning.md §4` já apontava que
+`FoodEntry.meal` é parseado mas não persistido. Nesta sessão:
+
+- `NutritionCacheStore.NutritionSnapshot` ganhou o campo
+  `mealBreakdown: List<MealTotal>`, persistido numa chave **nova**
+  (`meal_breakdown`, CSV `refeição:calorias`, mesmo padrão de
+  `weekly_calories`). As chaves existentes (`calories`, `protein`, `carbs`,
+  `fat`, `entry_count`, `last_sync`, `status`, `error`, `connected`,
+  `has_data`, `weekly_calories`) não foram tocadas.
+- `saveSuccess()` ganhou um parâmetro `mealBreakdown: List<MealTotal> =
+  emptyList()`, sempre não-nulo (ao contrário de `weekly`, que pode ser
+  `null` quando a busca secundária falha): o breakdown vem das MESMAS
+  `entries` já buscadas para somar `daily` em `FatSecretRepository.
+  syncLocked()`, então não há uma chamada de rede extra que possa falhar
+  independentemente — se `daily` foi calculado, o breakdown também foi.
+- Duas funções puras novas em `NutritionCalculator`:
+  `mealBreakdown(entries)` (agrupa por `meal`, soma calorias, ordena
+  decrescente — desempate estável pela ordem de aparição nas entradas) e
+  `dominantMealShare(meals)` (retorna `null` com menos de 2 refeições ou
+  total zero: uma "distribuição" de uma refeição só não é um padrão a
+  reportar).
+- `NutritionFormat` ganhou `mealLabel` (traduz os valores fixos do FatSecret
+  — `Breakfast`/`Lunch`/`Dinner`/`Other` — para pt-BR; valores desconhecidos
+  passam direto), `mealShareText` (frase descritiva, nunca de julgamento) e
+  `timeAgo` (buckets grosseiros para o detalhe do chip de sync).
+
+### Por que nenhum widget foi afetado
+
+`NutritionWidget.kt`/`WeightWidget.kt`, os receivers, o manifesto e as chaves
+de cache já existentes não foram tocados. A única mudança de schema é uma
+chave DataStore **nova e aditiva** (`meal_breakdown`), que o widget
+simplesmente ignora (ele lê apenas as chaves que já conhecia). `grep` sem
+hits de `ui.*` em `fatsecret/` reconfirmado.
+
+### Testes e validação
+
+- 9 testes novos: `mealBreakdownGroupsAndSortsByCaloriesDescending`,
+  `mealBreakdownOfEmptyEntriesIsEmpty`, `dominantMealShareNullWithFewerThanTwoMeals`,
+  `dominantMealSharePicksLargestAsPercentOfTotal`,
+  `dominantMealShareNullWhenTotalIsZero` (em `NutritionCalculatorTest`);
+  `mealLabelTranslatesKnownFatSecretMeals`, `mealLabelPassesThroughUnknownValues`,
+  `mealShareTextDescribesDominantMeal`, `timeAgoBucketsElapsedTime` (em
+  `NutritionFormatTest`).
+- `./gradlew :app:testDebugUnitTest` → **77 testes, 0 falhas** (68 anteriores
+  + 9 novos). Um teste (`mealBreakdownGroupsAndSortsByCaloriesDescending`)
+  falhou na primeira tentativa por uma suposição errada de ordem em caso de
+  empate — corrigido ajustando a expectativa para a ordem estável real do
+  `sortedByDescending` (Breakfast antes de Lunch, ambos empatados em 300
+  kcal, porque Breakfast apareceu primeiro nas entradas).
+- `./gradlew :app:assembleDebug` → **BUILD SUCCESSFUL**.
+- `grep -rn "import com.example.widgetfatsecret.ui" app/src/main/java/.../fatsecret/`
+  → vazio, regra de ouro reconfirmada.
+
+### Pendências desta sessão
+
+- **Não validado nesta sessão** (sem dispositivo/emulador neste ambiente):
+  nenhuma verificação visual da tela Hoje (anel, cores dos macros, contraste,
+  scroll) nem paridade numérica lado a lado com a `MainScreen` antiga e o app
+  FatSecret — o critério de conclusão da Etapa 4 pede essa comparação
+  explicitamente. Como nenhum arquivo de widget/manifesto/DataStore existente
+  foi alterado (só uma chave nova aditiva), o risco de regressão nos widgets é
+  baixo, mas a conferência visual e a paridade numérica ficam pendentes até
+  haver um dispositivo real.
+- Checklist manual de `docs/widget-smoke-test.md` continua pendente desde a
+  Etapa 0 (mesma limitação de ambiente).
+- Nada foi commitado antes desta sessão registrar o handoff — ver instrução
+  do usuário para o commit desta sessão.
+- **Próximo passo:** Etapa 5 — Metas e conta (planning.md §9): migrar
+  `GoalsSettingsScreen` e `connect()`/`disconnect()`/`saveGoals` para um novo
+  `AccountViewModel` dentro da rota `MetasConta` do `AppShell`, mantendo o
+  ciclo completo de OAuth (`beginConnect` → navegador → deep link →
+  `completeConnect`) idêntico ao atual.

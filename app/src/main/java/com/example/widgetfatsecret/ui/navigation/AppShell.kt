@@ -31,13 +31,15 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.example.widgetfatsecret.ui.design.EmptyState
 import com.example.widgetfatsecret.ui.theme.nutriColors
+import com.example.widgetfatsecret.ui.today.TodayRoute
 
 /**
  * Casca de navegação do "Nutri Insights" (planning.md §9, Etapa 3): Scaffold +
  * barra de navegação com as 5 abas + rota de Metas/Conta aberta pelo avatar no
- * topo. Todas as rotas mostram apenas um placeholder nesta etapa — o conteúdo
- * real chega nas Etapas 4-9. O NavHost não sabe nada sobre OAuth: o deep link
- * continua tratado pela Activity (planning.md §6, item 4).
+ * topo. `Hoje` já tem conteúdo real desde a Etapa 4 ([TodayRoute]); as demais
+ * rotas mostram apenas um placeholder até as Etapas 5-9. O NavHost não sabe
+ * nada sobre OAuth: o deep link continua tratado pela Activity (planning.md
+ * §6, item 4).
  */
 @Composable
 fun AppShell(modifier: Modifier = Modifier) {
@@ -67,10 +69,7 @@ fun AppShell(modifier: Modifier = Modifier) {
             modifier = Modifier.padding(innerPadding),
         ) {
             composable<Route.Hoje> {
-                PlaceholderScreen(
-                    title = "Hoje",
-                    description = "Anel de meta, macros e leitura do dia chegam na Etapa 4.",
-                )
+                TodayRoute()
             }
             composable<Route.Tendencias> {
                 PlaceholderScreen(

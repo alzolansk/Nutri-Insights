@@ -36,4 +36,29 @@ object NutritionFormat {
         InsightType.CALORIES_REMAINING -> "Restam ${int(insight.value)} kcal hoje"
         InsightType.PERCENT_OF_DAILY -> "Você consumiu ${insight.value.roundToInt()}% da meta diária"
     }
+
+    /** pt-BR label for FatSecret's fixed meal identifiers. Unrecognized values pass through. */
+    fun mealLabel(meal: String): String = when (meal.lowercase(ptBr)) {
+        "breakfast" -> "Café da manhã"
+        "lunch" -> "Almoço"
+        "dinner" -> "Jantar"
+        "snacks", "snack", "other" -> "Lanches"
+        else -> meal.ifBlank { "Sem refeição" }
+    }
+
+    /** "Jantar concentra 43% das calorias de hoje" — descriptive only, no judgement. */
+    fun mealShareText(insight: MealShareInsight): String =
+        "${mealLabel(insight.meal)} concentra ${insight.percent.roundToInt()}% das calorias de hoje"
+
+    /** Coarse elapsed time in pt-BR ("agora"/"há N min"/"há N h"/"há N d"). "—" if never synced. */
+    fun timeAgo(epochMillis: Long, nowMillis: Long = System.currentTimeMillis()): String {
+        if (epochMillis <= 0L) return "—"
+        val minutes = ((nowMillis - epochMillis) / 60_000L).coerceAtLeast(0)
+        return when {
+            minutes < 1 -> "agora"
+            minutes < 60 -> "há $minutes min"
+            minutes < 60 * 24 -> "há ${minutes / 60} h"
+            else -> "há ${minutes / (60 * 24)} d"
+        }
+    }
 }
