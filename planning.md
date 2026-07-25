@@ -1,0 +1,554 @@
+# Plano de Evolução — WidgetFatSecret → Nutri Insights
+
+> **Status:** planejamento apenas. Nenhum código foi alterado. Aguardando aprovação.
+> **Premissa central:** os widgets de tela inicial são o que já funciona hoje e são
+> intocáveis. Toda a evolução é **aditiva** — nada da infraestrutura atual é removido
+> antes de existir paridade verificada.
+
+---
+
+## 0. Fotografia do projeto atual
+
+- **Módulo único** `:app`, `namespace com.example.widgetfatsecret`, minSdk 34 / target 36.
+- **~2.900 linhas de Kotlin de produção**, das quais **apenas ~600 são UI do app**
+  (`MainActivity.kt` 113, `ui/AppScreens.kt` 294, `ui/FatSecretViewModel.kt` 191).
+  Todo o resto — API, OAuth, cache, domínio, widgets, workers — é infraestrutura
+  reaproveitável.
+- **Dois widgets Glance** (`NutritionWidget`, `WeightWidget`) com receivers próprios,
+  alimentados por dois DataStores independentes.
+- **6 classes de teste JVM** já verdes (`OAuth1SignerTest`, `FatSecretJsonTest`,
+  `FatSecretDateTest`, `NutritionCalculatorTest`, `NutritionFormatTest`,
+  `WeightCalculatorTest`).
+- **Sem histórico Git**: `git log` não retorna commits (branch `master` vazia).
+  Isso é o risco operacional nº 1 — ver Etapa 0.
+
+### Fonte do design
+
+O deck `assets/app_slides.pptx` (12 slides, "Nutri Insights") define o produto-alvo:
+5 telas de MVP + Metas/Conta, princípio "padrão mensurável, nunca julgamento",
+paleta escura (`#0A0F1A` base, `#131B2B` superfície, mint/ciano/âmbar/coral/violeta),
+tipografia Manrope + IBM Plex Mono para metadados, e um escopo negativo explícito
+(sem TDEE, sem correlação peso×calorias, sem score, sem classificação de alimentos,
+dias ausentes nunca viram zero).
+
+> Nota: o projeto do Claude Design (`71f2d226-…`) não aparece na lista de projetos
+> graváveis desta conta (`DesignSync.list_projects` retorna apenas *WYWatch Design
+> System* e *Design System*), então o design foi lido do deck local em `assets/`.
+> Se o import via MCP for necessário, é preciso confirmar o acesso/permissão do
+> projeto — não é bloqueante para este plano.
+
+---
+
+## 1. Arquivos e componentes que PRECISAM ser preservados
+
+### 1.1 Núcleo intocável (não editar sem necessidade comprovada)
+
+| Arquivo | Papel para os widgets |
+|---|---|
+| `fatsecret/widget/NutritionWidget.kt` (452) | Composição Glance do widget de nutrição |
+| `fatsecret/widget/WeightWidget.kt` (471) | Composição Glance do widget de peso |
+| `fatsecret/widget/NutritionWidgetReceiver.kt` / `WeightWidgetReceiver.kt` | Binding com o launcher |
+| `fatsecret/widget/WidgetColors.kt` | Pares dia/noite; o launcher escolhe na inflação |
+| `fatsecret/widget/WidgetScale.kt` / `WidgetTime.kt` | Escala responsiva e carimbo de horário |
+| `res/xml/nutrition_widget_info.xml` / `weight_widget_info.xml` | Metadados do AppWidgetProvider |
+| `fatsecret/data/AppContainer.kt` | Singleton + `syncAndRefresh()` single-flight |
+| `fatsecret/data/FatSecretRepository.kt` | OAuth, sync, baseline de peso, mutex |
+| `fatsecret/data/TokenStore.kt` | Tokens em EncryptedSharedPreferences |
+| `fatsecret/data/NutritionCacheStore.kt` | DataStore `nutrition_cache` |
+| `fatsecret/data/WeightCacheStore.kt` | DataStore `weight_cache` |
+| `fatsecret/data/GoalsStore.kt` | DataStore `nutrition_goals` (metas + peso inicial) |
+| `fatsecret/data/FatSecretJson.kt` / `FatSecretError.kt` | Parsing tolerante e mapeamento de erro |
+| `fatsecret/data/remote/*` (6 arquivos) | Retrofit, config, interceptor OAuth1, clients |
+| `fatsecret/oauth/OAuth1Signer.kt` | Assinatura HMAC-SHA1 |
+| `fatsecret/domain/*` (5 arquivos) | Modelos e cálculos puros |
+| `fatsecret/work/SyncWorker.kt` / `SyncScheduler.kt` | Sync periódico de 30 min + one-shot |
+| `app/build.gradle.kts` (bloco `secret()`/`manifestPlaceholders`) | BuildConfig e deep link |
+| `AndroidManifest.xml` (receivers + intent-filter de callback) | Registro dos widgets e do OAuth |
+
+### 1.2 Contratos que os widgets assumem — quebrar qualquer um destes quebra o widget
+
+1. **`com.example.widgetfatsecret.MainActivity` precisa continuar existindo com esse
+   nome e pacote.** Ambos os widgets chamam `actionStartActivity<MainActivity>()`
+   (`NutritionWidget.kt:110`, `WeightWidget.kt:112`). O *conteúdo* da Activity pode
+   mudar à vontade; a *classe* não pode ser renomeada, movida ou removida.
+2. **`launchMode="singleTask"` + `exported="true"` + intent-filter `VIEW`** na
+   MainActivity — é o que faz o `oauth_verifier` voltar por `onNewIntent`.
+3. **Nomes dos arquivos DataStore**: `nutrition_cache`, `weight_cache`,
+   `nutrition_goals`. Renomear = perder metas e cache dos usuários atuais.
+4. **`AppContainer.syncAndRefresh()` é o único ponto de sync**, e a ordem
+   fetch → persist → `NutritionWidget.updateAll` → `WeightWidget.updateAll` é
+   deliberada. Nenhuma tela nova pode chamar `repository.sync()` diretamente.
+5. **`appScope` (SupervisorJob + Dispatchers.Default)** — o sync não pode migrar
+   para `viewModelScope`; foi bug corrigido.
+6. **Salvar meta atualiza os dois widgets numa única corrotina** (`saveGoals`) —
+   dois `launch` separados causaram race no Glance.
+7. **Erro nunca sobrescreve o cache com zeros** (`saveError` só toca status/erro).
+
+---
+
+## 2. Telas atuais que podem ser removidas ou substituídas
+
+| Componente | Destino |
+|---|---|
+| `ui/AppScreens.kt` → `MainScreen` | **Substituída** pela tela *Hoje* (Etapa 4). Descartável. |
+| `ui/AppScreens.kt` → `TodaySummaryCard`, `MacroRow` | Descartáveis (viram componentes do design system). |
+| `ui/AppScreens.kt` → `GoalsSettingsScreen` | **Migrada**, não descartada: contém a lógica de parsing pt-BR (vírgula decimal), os textos explicativos sobre a API não expor metas e o campo de peso inicial. Reescrever a casca visual, preservar regras. |
+| `ui/AppScreens.kt` → `NumberField` / `DecimalField` | Preservar a lógica de sanitização (`take(6)`, separador único) ao reescrever. |
+| `MainActivity.kt` → `AppRoot` (composable privado) | **Substituída** pelo novo `AppShell` com navegação. |
+| `MainActivity.kt` → classe + `onNewIntent` + `callbackUri` | **Preservar integralmente.** |
+| `ui/FatSecretViewModel.kt` | **Decompor**, não apagar: vira `AccountViewModel` (conectar/desconectar/sync) + ViewModels por aba. A lógica de `init{}`, `syncNow`, `saveGoals`, `handleCallback` migra literalmente. |
+| `ui/theme/*` (Color, Theme, Type) | **Reescritos** com os tokens do deck. Sem impacto nos widgets — `WidgetColors.kt` é independente por design (o widget é inflado pelo processo do launcher). |
+
+---
+
+## 3. Dependências usadas pelos widgets
+
+Nenhuma pode sair do `libs.versions.toml`:
+
+| Dependência | Usada por |
+|---|---|
+| `androidx-glance-appwidget` + `androidx-glance-material3` | Widgets (exclusivo deles) |
+| `androidx-work-runtime-ktx` | `SyncWorker` / `SyncScheduler` |
+| `androidx-datastore-preferences` | Os 3 stores |
+| `androidx-security-crypto` | `TokenStore` |
+| `okhttp` + `okhttp-logging` | Clients HTTP e interceptor OAuth |
+| `retrofit` | `FatSecretService` |
+| `kotlinx-serialization-json` | `FatSecretJson` |
+| `kotlinx-coroutines-android` | Flows, `appScope`, mutex |
+| Plugins `kotlin-serialization`, `kotlin-compose`, AGP | Build inteiro |
+
+**Compose/Material3/Activity/Lifecycle** são usados só pelo app — podem evoluir.
+
+**A adicionar (nenhuma delas toca os widgets):**
+- `androidx.navigation:navigation-compose` — navegação por abas.
+- *(opcional)* `androidx.room` — se a série histórica crescer além do que
+  Preferences comporta. **Recomendação: começar sem Room**, com um DataStore
+  novo e dedicado; adotar Room só se a Etapa 2 mostrar necessidade real.
+- *(opcional)* fonte Manrope como recurso local (`res/font`) — o deck pede Manrope
+  e IBM Plex Mono. Sem isso, usar a fonte do sistema com pesos equivalentes.
+
+---
+
+## 4. Dados e serviços reutilizáveis no novo app
+
+**Reutilizáveis como estão (100%):**
+- `FatSecretRepository`: `uiState` (Flow de snapshot+metas), `weightState`,
+  `goalsFlow`, `startWeightFlow`, `discoveredStartWeightFlow`, `beginConnect`,
+  `completeConnect`, `disconnect`, `isConnected`, `saveGoals`, `saveStartWeight`.
+- `AppContainer.syncAndRefresh()` — sync manual da nova UI.
+- `SyncScheduler.ensurePeriodic/cancelAll` — atualização periódica.
+- `NutritionCalculator`, `WeightCalculator`, `NutritionFormat`, `WeightFormat`,
+  `FatSecretDate` — cálculo e formatação pt-BR prontos.
+- `foodClient.getMonth()` → `DayNutrition(dateInt, calories, protein, carbs, fat)`.
+  **Este é o dado que sustenta Tendências, Padrões e Consistência** — já existe e
+  já é parseado; hoje o app só usa a coluna `calories` para o gráfico de 7 dias.
+- `weightClient.getMonth()` + `getProfile()` → tela *Peso* praticamente pronta
+  (`WeightStats` já traz média semanal, tendência, progresso, baseline).
+- `recentDailyCalorieAverage()` e `daysRecordedThisMonth()` — já existem no
+  repositório e hoje **não têm chamador**. Reaproveitáveis de imediato.
+
+**Precisa ser criado (não existe hoje):**
+- **Persistência de série histórica.** `NutritionCacheStore` guarda só o dia atual
+  + 7 calorias diárias. Tendências (30 dias), Padrões (4 semanas) e Consistência
+  (calendário mensal) precisam de N dias × 4 macros persistidos.
+- **Distribuição por refeição.** O deck pede "o jantar é 43% das calorias".
+  `FoodEntry.meal` já é parseado, mas só o dia de hoje é buscado e o campo `meal`
+  **não é persistido**. Requer `food_entries.get.v2` por dia + armazenamento.
+  ⚠️ Custo de quota alto (1 request por dia analisado) — ver risco R6.
+  **Recomendação:** MVP entrega refeições **apenas para o dia de hoje** (tela Hoje),
+  e a análise de refeições em Padrões fica atrás de uma sincronização detalhada
+  opcional — exatamente como o próprio deck registra no escopo ("Alimentos só com
+  sincronização detalhada").
+
+---
+
+## 5. O que precisa ser desacoplado da interface atual
+
+| Hoje está acoplado | Desacoplar assim |
+|---|---|
+| `FatSecretViewModel` mistura conta, sync, metas e leitura de estado | Separar em `AccountViewModel` (conectar/desconectar/sync/deep link) e ViewModels por aba, todos lendo do mesmo `AppContainer` |
+| Deep-link OAuth vive dentro de `AppRoot` (composable privado) | Extrair para um `OAuthCallbackHandler` chamado pelo `AppShell`, mantendo o `MutableState<Uri?>` na Activity |
+| `UiEvent.Message` → `Toast` direto na Activity | Migrar para `SnackbarHost` no novo Scaffold; contrato `UiEvent` preservado |
+| Estados de sync (`connected`/`loading`/`error`/`sem registros`) reimplementados em cada tela | Um `SyncStatusChip` único no design system, alimentado pelo `NutritionSnapshot` — o deck exige o chip visível em todas as telas |
+| Textos pt-BR espalhados em literais Kotlin | Não é obrigatório resolver agora; se resolver, `res/values/strings.xml` — **sem tocar nos literais dentro de `widget/`**, que são renderizados pelo launcher |
+| `repository.recentDailyCalorieAverage` faz I/O de rede direto na chamada | Envolver num `HistoryRepository` com cache, para a UI nunca disparar rede a cada recomposição |
+
+**Regra de ouro do desacoplamento:** nenhuma classe em `fatsecret/data`,
+`fatsecret/domain`, `fatsecret/widget`, `fatsecret/work` ou `fatsecret/oauth` pode
+passar a importar algo de `ui/`. A dependência é sempre `ui → fatsecret`, nunca o
+contrário. Isso já é verdade hoje (verificado: nenhum import de `ui.*` dentro de
+`fatsecret/`, exceto a referência a `MainActivity`) e deve continuar sendo.
+
+---
+
+## 6. Como criar a nova navegação sem afetar os widgets
+
+1. **`MainActivity` permanece a mesma classe, no mesmo pacote, com a mesma entrada
+   no manifesto.** Só o corpo do `setContent` muda. É isso que mantém
+   `actionStartActivity<MainActivity>()` funcionando nos dois widgets.
+2. **`AppShell`** (novo composable) substitui `AppRoot`: `Scaffold` +
+   `NavigationBar` de 5 abas (Hoje, Tendências, Padrões, Consistência, Peso) +
+   avatar no topo abrindo *Metas e conta*, conforme o mapa do slide 3.
+3. **`NavHost` com rotas tipadas**, start destination `hoje`.
+4. **O deep link OAuth continua sendo tratado pela Activity**, não pelo NavHost.
+   Registrar o esquema `${fatSecretCallbackScheme}` como deep link de navegação
+   seria uma mudança de comportamento desnecessária e arriscada — o fluxo atual
+   (`onNewIntent` → `MutableState<Uri?>` → `LaunchedEffect`) já funciona e é
+   preservado literalmente.
+5. **Nenhuma nova Activity, nenhum novo intent-filter, nenhuma mudança em
+   `launchMode`.** Se no futuro um widget precisar abrir uma aba específica, a
+   forma segura é `actionStartActivity<MainActivity>(intent com extra "tab")` —
+   mas isso é fora de escopo desta etapa e exigiria reteste completo dos widgets.
+6. **Convivência durante a migração:** a UI antiga fica acessível atrás de uma
+   constante de build (`const val USE_LEGACY_UI = false` em código de debug) até a
+   Etapa 10. Isso dá rollback imediato sem `git revert`.
+
+---
+
+## 7. Migração de Metas, Conta e Sincronização
+
+**Metas** (`GoalsSettingsScreen` → aba *Metas e conta*):
+- `GoalsStore` e suas chaves (`calories`, `protein`, `carbs`, `fat`,
+  `start_weight_kg`) permanecem **idênticas** — zero migração de dados.
+- Preservar: sanitização numérica, aceite de vírgula decimal, `coerceAtLeast(0)`,
+  fallback para os defaults, e os dois textos explicativos (a API não expõe metas
+  nem peso inicial — são as perguntas que o usuário mais faz).
+- Preservar: salvar metas → `updateWidgets()` numa **única** corrotina → `syncNow()`.
+- O deck reforça no slide 12: "Metas de macros são locais". Manter esse aviso.
+
+**Conta** (conectar/desconectar):
+- `connect()`, `handleCallback()`, `disconnect()` migram literalmente para
+  `AccountViewModel`, incluindo o `clearCache = true` no disconnect e o
+  `SyncScheduler.cancelAll`.
+- Mensagens de erro (`messageFor(SyncErrorType)`) migram como estão; o método
+  público `messageForPublic` (hoje sem chamador) passa a ser usado pelas telas.
+
+**Sincronização**:
+- Chamada única via `container.syncAndRefresh().await()`, observada pela UI apenas
+  para mostrar progresso — nunca cancelando o trabalho.
+- `init{}` do ViewModel atual (marcar `connected`, agendar periódico, sincronizar
+  ao abrir) migra para o `AccountViewModel`, **executado uma vez por processo**,
+  não uma vez por aba. Cuidado explícito: cinco abas com cinco ViewModels não podem
+  virar cinco syncs ao abrir o app (ver risco R5).
+- O chip "Sincronizado há 12 min" do deck lê `snapshot.lastSyncMillis` — já existe.
+
+---
+
+## 8. Ordem de implementação
+
+**Princípio de ordenação:** infraestrutura de dados antes de telas; a tela que já
+tem 100% dos dados (Hoje) antes das que precisam de histórico; a tela que substitui
+função existente (Metas/Conta) cedo, para poder aposentar a UI antiga; remoção do
+legado por último.
+
+```
+Etapa 0  Rede de segurança (commit inicial + baseline dos widgets)
+Etapa 1  Camada de histórico (dados) — sem UI
+Etapa 2  Design system (tema, tokens, componentes base) — sem lógica
+Etapa 3  Casca de navegação (MainActivity + AppShell + 6 rotas vazias)
+Etapa 4  Tela Hoje
+Etapa 5  Metas e conta
+Etapa 6  Tendências
+Etapa 7  Padrões (+ folha de metodologia)
+Etapa 8  Consistência
+Etapa 9  Peso
+Etapa 10 Estados (vazio / carregando / erro / dados insuficientes)
+Etapa 11 Remoção do legado
+```
+
+---
+
+## 9. Etapas detalhadas
+
+### Etapa 0 — Rede de segurança e linha de base
+
+- **Objetivo:** garantir rollback e registrar o comportamento atual dos widgets
+  antes de qualquer linha nova. **O repositório não tem nenhum commit** — sem isso
+  não existe "voltar atrás".
+- **Arquivos afetados:** `.gitignore` (verificar que `local.properties`, `build/`,
+  `.idea/` estão ignorados), commit inicial de tudo, tag `baseline-widgets`.
+  Novo: `docs/widget-smoke-test.md`.
+- **Funcionalidades preservadas:** todas (nenhuma alteração de código).
+- **Critérios de conclusão:** commit inicial criado; checklist de fumaça dos
+  widgets escrito e executado uma vez com resultado registrado; `local.properties`
+  confirmadamente fora do versionamento.
+- **Build e testes:** `./gradlew :app:testDebugUnitTest` (6 classes verdes) e
+  `./gradlew :app:assembleDebug`. Instalar, adicionar os dois widgets em ambos os
+  tamanhos, conectar a conta, sincronizar, alternar tema claro/escuro.
+
+---
+
+### Etapa 1 — Camada de histórico (sem UI)
+
+- **Objetivo:** persistir a série diária (data, kcal, proteína, carbo, gordura) e
+  expor Flows agregados, **sem tocar em `NutritionCacheStore`**.
+- **Arquivos afetados:** *novos* —
+  `fatsecret/data/history/NutritionHistoryStore.kt` (DataStore `nutrition_history`,
+  CSV compacto no mesmo padrão de `WeightCacheStore.encode`),
+  `fatsecret/data/history/HistoryRepository.kt`,
+  `fatsecret/domain/history/TrendCalculator.kt`,
+  `fatsecret/domain/history/PatternCalculator.kt`,
+  `fatsecret/domain/history/ConsistencyCalculator.kt` (todos puros, sem Android).
+  *Modificado (mínimo)* — `AppContainer.kt`: expor `historyRepository`.
+  **`FatSecretRepository.sync()` não é alterado nesta etapa.**
+- **Funcionalidades preservadas:** todas. Nenhum store existente é lido ou escrito
+  de forma diferente; o histórico é um quarto arquivo DataStore, independente.
+- **Critérios de conclusão:** `HistoryRepository.refresh()` busca 1–2 meses via
+  `foodClient.getMonth()` e persiste; Flows de média por janela (7/14/30), média
+  por dia da semana, e dias registrados por mês funcionando; **dias ausentes
+  representados como ausência, nunca como zero** (regra explícita do deck);
+  testes unitários dos três calculadores cobrindo janela vazia, janela parcial,
+  e "dados insuficientes" (< 4 dias registrados por semana).
+- **Build e testes:** `:app:testDebugUnitTest` (novos testes + os 6 existentes),
+  `:app:assembleDebug`. Checklist de widgets completo — esta etapa mexe no
+  `AppContainer`, que é compartilhado.
+
+---
+
+### Etapa 2 — Design system
+
+- **Objetivo:** tokens de cor, tipografia e componentes base do deck, prontos para
+  as telas.
+- **Arquivos afetados:** `ui/theme/Color.kt`, `Theme.kt`, `Type.kt` (reescritos);
+  *novos* `ui/design/` — `StatCard`, `MetricValue` (tabular-nums), `MetaChip`
+  (monoespaçada), `SyncStatusChip`, `GoalRing`, `BarChart`, `EmptyState`,
+  `SkeletonBlock`. Opcional: `res/font/` (Manrope, IBM Plex Mono).
+- **Funcionalidades preservadas:** todas. **`widget/WidgetColors.kt` NÃO é tocado**
+  — o widget é inflado pelo processo do launcher e tem paleta própria por decisão
+  documentada (README §7.1). Unificar as paletas agora reintroduziria o bug de
+  tema "congelado".
+- **Critérios de conclusão:** previews Compose de cada componente em claro e
+  escuro; contraste ≥ 4,5:1 verificado nos textos; nenhum estado dependendo só de
+  cor (todo estado carrega rótulo + percentual, conforme slide 4).
+- **Build e testes:** `:app:assembleDebug`. Widgets: verificação visual rápida
+  (não devem mudar em nada — se mudarem, algo do tema vazou).
+
+---
+
+### Etapa 3 — Casca de navegação
+
+- **Objetivo:** `AppShell` com 5 abas + rota de Metas/Conta, todas com placeholder.
+- **Arquivos afetados:** `MainActivity.kt` (só o corpo do `setContent`),
+  *novos* `ui/navigation/AppShell.kt`, `ui/navigation/Routes.kt`,
+  `gradle/libs.versions.toml` + `app/build.gradle.kts` (navigation-compose).
+  A UI antiga continua no projeto, atrás da flag `USE_LEGACY_UI`.
+- **Funcionalidades preservadas:** classe `MainActivity` (nome/pacote/manifesto),
+  `launchMode="singleTask"`, `onNewIntent`, tratamento do `oauth_verifier`,
+  `enableEdgeToEdge`.
+- **Critérios de conclusão:** as 6 rotas navegam; tocar em qualquer widget abre o
+  app na aba Hoje; o fluxo OAuth completo (conectar → navegador → deep link →
+  token → sync) funciona idêntico ao de antes, com a UI antiga ainda alcançável
+  pela flag.
+- **Build e testes:** `:app:testDebugUnitTest`, `:app:assembleDebug`.
+  **Checklist crítico de widget:** tocar no corpo de cada widget, em cada estado
+  (conectado, desconectado, erro, sem registros), deve abrir o app.
+
+---
+
+### Etapa 4 — Tela Hoje
+
+- **Objetivo:** anel de meta com o restante em número grande, macros com
+  consumido/meta e percentual, distribuição por refeição do dia, "Leitura do dia"
+  com no máximo dois insights, chip de sincronização.
+- **Arquivos afetados:** *novos* `ui/today/TodayScreen.kt`, `TodayViewModel.kt`.
+  *Modificado* `NutritionCacheStore` **apenas se** a distribuição por refeição do
+  dia for persistida — nesse caso, **adicionar uma chave nova**, jamais alterar as
+  existentes (`calories`, `protein`, `carbs`, `fat`, `entry_count`, `last_sync`,
+  `status`, `error`, `connected`, `has_data`, `weekly_calories`).
+- **Funcionalidades preservadas:** o widget lê o mesmo snapshot; qualquer chave
+  nova é aditiva e opcional. `NutritionCalculator.buildInsight` reaproveitado.
+- **Critérios de conclusão:** paridade com a `MainScreen` antiga (mesmos números)
+  + refeições + chip; estado "sincronizado sem registros" visualmente distinto de
+  "consumo zero" (slide 10).
+- **Build e testes:** `:app:testDebugUnitTest`, `:app:assembleDebug`. Comparar
+  lado a lado: número do app × número do widget × número do app FatSecret.
+  Alterar uma meta e confirmar que app **e** widget atualizam.
+
+---
+
+### Etapa 5 — Metas e conta
+
+- **Objetivo:** migrar metas, peso inicial, conectar/desconectar e sync manual.
+- **Arquivos afetados:** *novos* `ui/account/GoalsAccountScreen.kt`,
+  `ui/account/AccountViewModel.kt`. `MainActivity.kt` (fiação do deep link).
+- **Funcionalidades preservadas (todas, literalmente):** `beginConnect` /
+  `completeConnect` / `disconnect(clearCache = true)`; `SyncScheduler.ensurePeriodic`
+  no sucesso e `cancelAll` no disconnect; `saveGoals` + `saveStartWeight` +
+  `updateWidgets()` numa **única** corrotina; sanitização numérica pt-BR; os textos
+  sobre a API não expor metas/peso inicial; mensagens de `SyncErrorType`.
+- **Critérios de conclusão:** conectar do zero funciona; desconectar limpa cache e
+  widgets voltam ao estado desconectado; salvar meta reflete no widget em um único
+  refresh (sem piscar valor antigo); reinstalar não é necessário para nada disso.
+- **Build e testes:** `:app:testDebugUnitTest`, `:app:assembleDebug`.
+  **Ciclo completo obrigatório:** desconectar → widgets em estado vazio →
+  reconectar → widgets repopulados. Este é o teste de regressão mais importante
+  de todo o plano.
+
+---
+
+### Etapa 6 — Tendências
+
+- **Objetivo:** média diária em 7/14/30 dias, variação vs. período anterior, gráfico
+  de calorias por dia com linha da meta, distribuição acima/próximo/abaixo.
+- **Arquivos afetados:** *novos* `ui/trends/TrendsScreen.kt`, `TrendsViewModel.kt`.
+  Consome a Etapa 1; sem alteração em data/domain existentes.
+- **Funcionalidades preservadas:** todas (tela puramente aditiva).
+- **Critérios de conclusão:** dia sem registro é contorno tracejado e fica fora de
+  todas as médias; número de dias registrados sempre exibido ao lado da média;
+  card "dados insuficientes" com a regra mínima quando faltam amostras.
+- **Build e testes:** `:app:testDebugUnitTest` (cálculos de janela e comparação),
+  `:app:assembleDebug`. Widgets: verificação rápida.
+
+---
+
+### Etapa 7 — Padrões
+
+- **Objetivo:** padrões observados (dia, ciclo, macro, refeição), média por dia da
+  semana, frequência fora da meta, e a **folha de metodologia** de cada insight.
+- **Arquivos afetados:** *novos* `ui/patterns/PatternsScreen.kt`,
+  `PatternsViewModel.kt`, `ui/patterns/MethodologySheet.kt`.
+- **Funcionalidades preservadas:** todas.
+- **Critérios de conclusão:** todo insight abre janela analisada, dias registrados,
+  regra de cálculo e limitação do dado (slide 8); linguagem 100% descritiva, sem
+  julgamento (slide 2); nenhum insight sobre alimentos individuais nem
+  micronutrientes (slide 12). Análise por refeição só aparece se houver
+  sincronização detalhada — caso contrário, estado explicativo.
+- **Build e testes:** `:app:testDebugUnitTest` (agrupamento por dia da semana com
+  amostra pequena; contagem "X de Y dias"), `:app:assembleDebug`.
+
+---
+
+### Etapa 8 — Consistência
+
+- **Objetivo:** calendário mensal com quatro estados de ausência, sequência atual,
+  maior sequência, percentual de 30 dias.
+- **Arquivos afetados:** *novos* `ui/consistency/ConsistencyScreen.kt`,
+  `ConsistencyViewModel.kt`, `ui/design/CalendarGrid.kt`.
+- **Funcionalidades preservadas:** todas.
+- **Critérios de conclusão:** os quatro estados (registrado / sem entradas / não
+  sincronizado / futuro) são visualmente distintos e nomeados; nenhum tom de
+  cobrança no texto; "não sincronizado" nunca é confundido com "sem entradas".
+- **Build e testes:** `:app:testDebugUnitTest` (sequências com lacunas, mês
+  parcial, virada de mês), `:app:assembleDebug`.
+
+---
+
+### Etapa 9 — Peso
+
+- **Objetivo:** peso atual, delta, meta do FatSecret, pesagens, evolução com média
+  móvel de 7 dias e calorias no mesmo eixo de tempo.
+- **Arquivos afetados:** *novos* `ui/weight/WeightScreen.kt`, `WeightViewModel.kt`.
+  Consome `repository.weightState` (já pronto) + histórico da Etapa 1.
+- **Funcionalidades preservadas:** `WeightCalculator`, baseline, override de peso
+  inicial, `WeightFormat` (kg/lb) — todos reaproveitados sem alteração.
+- **Critérios de conclusão:** números idênticos aos do `WeightWidget`; aviso
+  explícito de não-causalidade sob os gráficos combinados (slide 9); sem previsão
+  de data, sem correlação numérica (slide 12).
+- **Build e testes:** `:app:testDebugUnitTest`, `:app:assembleDebug`. Comparar cada
+  número com o do widget de peso — divergência aqui indica regressão no cálculo
+  compartilhado.
+
+---
+
+### Etapa 10 — Estados
+
+- **Objetivo:** os seis estados do slide 10 em todas as telas.
+- **Arquivos afetados:** telas das Etapas 4–9 + `ui/design/EmptyState.kt`,
+  `SkeletonBlock.kt`.
+- **Funcionalidades preservadas:** "falha de sync mantém os últimos dados válidos"
+  — é o mesmo contrato que o widget já cumpre; a UI deve espelhá-lo, não
+  contradizê-lo.
+- **Critérios de conclusão:** avião ligado → dados antigos + chip datado, nunca
+  tela vazia; esqueleto com altura do conteúdo final (sem deslocamento de layout).
+- **Build e testes:** `:app:assembleDebug`. Testes manuais: modo avião, conta
+  recém-conectada sem registros, token revogado.
+
+---
+
+### Etapa 11 — Remoção do legado
+
+- **Objetivo:** apagar a UI antiga **somente** após paridade verificada.
+- **Arquivos afetados:** remover `ui/AppScreens.kt` e `ui/FatSecretViewModel.kt`;
+  remover a flag `USE_LEGACY_UI`. Atualizar `README.md` (seções 6 e 7.1) e
+  `handoff.md`.
+- **Funcionalidades preservadas:** verificar item a item, contra a lista da
+  seção 1.2, que nada foi removido junto.
+- **Critérios de conclusão:** `grep` confirma que nenhum arquivo em `fatsecret/`
+  importa `ui.*` (exceto `MainActivity` nos dois widgets); nenhuma referência
+  pendente às classes removidas; README descreve o app novo.
+- **Build e testes:** `:app:testDebugUnitTest`, `:app:assembleDebug`,
+  `:app:assembleRelease`, e o checklist completo de widgets uma última vez.
+
+---
+
+## 10. Riscos para os widgets
+
+| # | Risco | Impacto | Mitigação |
+|---|---|---|---|
+| **R1** | Renomear/mover/apagar `MainActivity` | Tocar no widget deixa de abrir o app, em todos os estados | A classe é intocável (seção 1.2, item 1). Verificar com `grep MainActivity` antes de qualquer refatoração de pacote |
+| **R2** | Alterar `launchMode` ou o intent-filter da MainActivity | Quebra o retorno do `oauth_verifier`; usuário nunca conecta | Manifesto da Activity congelado; qualquer mudança exige ciclo OAuth completo de teste |
+| **R3** | Renomear arquivos DataStore ou chaves | Perda silenciosa de metas e cache; widget volta a defaults | Nomes e chaves congelados; novas chaves só aditivas |
+| **R4** | Nova tela chamar `repository.sync()` direto | Perde o single-flight, race de escrita, widget com dado antigo | Único ponto de entrada permitido: `AppContainer.syncAndRefresh()` |
+| **R5** | 5 abas × 5 ViewModels disparando sync ao abrir | Estouro de quota, respostas fora de ordem | Sync de abertura só no `AccountViewModel`, uma vez por processo. O single-flight já protege, mas não é desculpa para chamar 5 vezes |
+| **R6** | Backfill de histórico gastando quota | Rate limit (`SyncErrorType.RATE_LIMIT`) derruba o sync do widget | Preferir `get_month` (1 request/mês) a `get.v2` (1/dia); backfill sob demanda, com resultado persistido; nunca em `init{}` de tela |
+| **R7** | Unificar tema do app com `WidgetColors` | Reintrodução do bug de tema congelado no launcher | `WidgetColors.kt` fica fora do design system, por decisão documentada |
+| **R8** | Múltiplos `updateWidgets()` em corrotinas separadas | Race de sessão do Glance; widget mantém valor antigo | Padrão do `saveGoals` atual: escritas + refresh numa única corrotina |
+| **R9** | Bump de Glance/Compose BOM junto com a migração | Regressão de layout do widget misturada com mudanças de app | Nenhum bump de `glance`, `work`, `datastore` ou `security-crypto` durante as Etapas 0–11 |
+| **R10** | Ativar R8/minify para "limpar" o release | Perda de classes do Glance/Retrofit por reflexão | `isMinifyEnabled` permanece `false`; se for ligado, é tarefa própria com teste de release |
+| **R11** | Trocar Preferences por Room "de uma vez" | Migração de dados nos três stores que os widgets leem | Room, se vier, é só para o histórico novo. Os três stores existentes ficam em Preferences |
+| **R12** | Ausência de commits no repositório | Sem rollback para qualquer regressão | Etapa 0, antes de tudo |
+
+---
+
+## 11. Como validar que os widgets continuam funcionando
+
+### Checklist de fumaça (executar ao final de cada etapa)
+
+**Automatizado:**
+```bash
+./gradlew :app:testDebugUnitTest
+```
+```bash
+./gradlew :app:assembleDebug
+```
+
+**Manual — os dois widgets, em ambos os tamanhos:**
+
+1. Widget de nutrição mostra kcal e macros com os mesmos números da tela Hoje.
+2. Widget de peso mostra peso, delta, tendência e progresso corretos.
+3. **Tocar no corpo de cada widget abre o app** (o teste que mais barato quebra).
+4. Alterar uma meta no app → os dois widgets refletem em um único refresh.
+5. Alternar o tema do sistema (claro/escuro) → os widgets viram na hora, **sem**
+   nova sincronização.
+6. Modo avião → os widgets mantêm os últimos dados válidos e sinalizam a falha,
+   sem zerar nada.
+7. Forçar update: `adb shell am broadcast -a android.appwidget.action.APPWIDGET_UPDATE`.
+8. Redimensionar cada widget na tela inicial (a escala é responsiva).
+
+**Ciclo completo (obrigatório nas Etapas 3, 5 e 11):**
+
+9. Desconectar → widgets vão ao estado desconectado e o cache é limpo.
+10. Reconectar (OAuth completo, via navegador e deep link) → widgets repopulados.
+11. Fechar o app durante um sync → o sync termina e os widgets atualizam mesmo
+    assim (é o contrato do `appScope`).
+12. Reiniciar o aparelho → widgets renderizam do cache; o worker periódico volta.
+
+### Critério de bloqueio
+
+Qualquer item de 1 a 12 falhando **bloqueia** o avanço para a etapa seguinte. Não
+existe "corrigimos depois": a regressão precisa ser resolvida ou revertida na
+etapa em que apareceu.
+
+---
+
+## 12. O que este plano deliberadamente NÃO faz
+
+- Não reconstrói o projeto do zero nem cria módulo novo.
+- Não refatora `FatSecretRepository`, `AppContainer`, os stores, os clients HTTP,
+  o assinador OAuth nem os widgets — todos funcionam e ficam como estão.
+- Não migra os dados existentes: metas, tokens e cache seguem onde estão.
+- Não remove uma única linha da UI antiga antes da Etapa 11.
+- Não atualiza versões de dependências usadas pelos widgets.
+- Não implementa nada do escopo negativo do deck (TDEE, correlação peso×calorias,
+  score de alimentação, classificação de alimentos, micronutrientes, previsão de
+  peso, recomendação médica ou nutricional).

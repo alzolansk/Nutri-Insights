@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">WidgetFatSecret</string>
+    <string name="widget_description">Consumo nutricional de hoje (FatSecret)</string>
+    <string name="weight_widget_description">Peso e evolução recente (FatSecret)</string>
+</resources>
