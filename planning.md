@@ -1,7 +1,7 @@
 # Plano de Evolução — WidgetFatSecret → Nutri Insights
 
-> **Status:** Etapas 0, 1, 2, 3, 4 e 5 implementadas (ver §9). Etapas 6–11 seguem
-> apenas planejadas, aguardando aprovação para prosseguir.
+> **Status:** Etapas 0, 1, 2, 3, 4, 5 e 6 implementadas (ver §9). Etapas 7–11
+> seguem apenas planejadas, aguardando aprovação para prosseguir.
 > **Premissa central:** os widgets de tela inicial são o que já funciona hoje e são
 > intocáveis. Toda a evolução é **aditiva** — nada da infraestrutura atual é removido
 > antes de existir paridade verificada.
@@ -589,7 +589,7 @@ Etapa 11 Remoção do legado
 
 ---
 
-### Etapa 6 — Tendências
+### Etapa 6 — Tendências ✅ concluída (2026-07-25)
 
 - **Objetivo:** média diária em 7/14/30 dias, variação vs. período anterior, gráfico
   de calorias por dia com linha da meta, distribuição acima/próximo/abaixo.
@@ -601,6 +601,36 @@ Etapa 11 Remoção do legado
   card "dados insuficientes" com a regra mínima quando faltam amostras.
 - **Build e testes:** `:app:testDebugUnitTest` (cálculos de janela e comparação),
   `:app:assembleDebug`. Widgets: verificação rápida.
+- **Status real:** implementado como planejado.
+  [`ui/trends/TrendsViewModel.kt`](app/src/main/java/com/example/widgetfatsecret/ui/trends/TrendsViewModel.kt)
+  combina `repo.uiState` com `historyRepository.daysFlow` e computa os três
+  `TrendSummary` (7/14/30) via `TrendCalculator.summarize` — puro, sem I/O
+  extra por emissão. É o **primeiro chamador** de `HistoryRepository.refresh()`
+  (Etapa 1 deixou isso documentado como pendente até "uma tela consumidora de
+  histórico existir"): disparado uma vez em `init{}`, no escopo da própria aba,
+  nunca em `AppContainer.syncAndRefresh()` — mantém o custo de quota do risco
+  R6 isolado desta tela.
+  [`ui/trends/TrendsScreen.kt`](app/src/main/java/com/example/widgetfatsecret/ui/trends/TrendsScreen.kt)
+  monta `SyncStatusChip` + 3 `StatCard` de janela (média + variação com seta
+  ↑/↓, sem cor de julgamento) + `StatCard` com `BarChart` (linha de meta,
+  dias ausentes em contorno tracejado — comportamento nativo do componente da
+  Etapa 2) + `StatCard` de distribuição acima/perto/abaixo. Cada janela abaixo
+  do mínimo de dias mostra o texto de "dados insuficientes" **dentro do card**
+  (a contagem "X de Y dias" continua sempre visível). `TrendCalculator` ganhou
+  uma função pura nova, `distribution(days, goalCalories, tolerance)`, mais
+  `CalorieDistribution` — dias sem registro nunca contam como "abaixo da
+  meta"; meta ≤ 0 zera a distribuição em vez de forçar uma classificação sem
+  sentido. Nenhuma função existente de `fatsecret/domain` foi alterada.
+  `ui/navigation/AppShell.kt`: rota `Tendencias` trocou o placeholder por
+  `TrendsRoute()`. **Nenhum widget, `MainActivity`, DataStore existente ou
+  `AppContainer.syncAndRefresh()` foi tocado** — regra de ouro reverificada.
+  `:app:testDebugUnitTest` (**79 testes, 0 falhas** — 77 anteriores + 2 novos
+  cobrindo `distribution`) e `:app:assembleDebug` verdes.
+  **Pendência:** a renderização visual da tela (chip, cards, gráfico,
+  distribuição) em claro/escuro e o custo real de quota de `refresh()` contra
+  a API não foram verificados nesta sessão — sem dispositivo/emulador
+  disponível, mesma limitação de todas as etapas anteriores. O checklist de
+  `docs/widget-smoke-test.md` continua pendente de execução manual.
 
 ---
 

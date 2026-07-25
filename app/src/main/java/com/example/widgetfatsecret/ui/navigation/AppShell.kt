@@ -35,6 +35,7 @@ import com.example.widgetfatsecret.ui.account.GoalsAccountRoute
 import com.example.widgetfatsecret.ui.design.EmptyState
 import com.example.widgetfatsecret.ui.theme.nutriColors
 import com.example.widgetfatsecret.ui.today.TodayRoute
+import com.example.widgetfatsecret.ui.trends.TrendsRoute
 
 /**
  * Casca de navegação do "Nutri Insights" (planning.md §9, Etapa 3): Scaffold +
@@ -42,7 +43,9 @@ import com.example.widgetfatsecret.ui.today.TodayRoute
  * topo. `Hoje` tem conteúdo real desde a Etapa 4 ([TodayRoute]) e `Metas e
  * conta` desde a Etapa 5 ([GoalsAccountRoute]); as demais rotas mostram um
  * placeholder até as Etapas 6-9. O NavHost não sabe nada sobre OAuth: o deep
- * link continua tratado pela Activity (planning.md §6, item 4).
+ * link continua tratado pela Activity (planning.md §6, item 4). `Tendências` tem
+ * conteúdo real desde a Etapa 6 ([TrendsRoute]); as demais rotas mostram um
+ * placeholder até as Etapas 7-9.
  *
  * [accountViewModel] é recebido de fora (não resolvido aqui com `viewModel()`)
  * porque precisa ser a MESMA instância que a Activity usa para tratar o
@@ -82,10 +85,7 @@ fun AppShell(accountViewModel: AccountViewModel, modifier: Modifier = Modifier) 
                 TodayRoute()
             }
             composable<Route.Tendencias> {
-                PlaceholderScreen(
-                    title = "Tendências",
-                    description = "Médias de 7/14/30 dias e o gráfico de calorias chegam na Etapa 6.",
-                )
+                TrendsRoute()
             }
             composable<Route.Padroes> {
                 PlaceholderScreen(

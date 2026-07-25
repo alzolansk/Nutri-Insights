@@ -2,18 +2,19 @@
 
 Atualizado em: 2026-07-25
 
-> **Nota de sessão (2026-07-25, 12ª parte) — LEIA PRIMEIRO:** a **Etapa 5 —
-> Metas e conta** do `planning.md` foi implementada. O avatar/engrenagem no
-> topo do `AppShell` agora abre uma tela real de "Metas e conta"
-> (conectar/desconectar, sincronizar, metas diárias, peso inicial) em vez do
-> placeholder da Etapa 3. **A frente de trabalho ativa continua sendo
-> `planning.md`, não as seções 1–19 abaixo** (histórico de ajustes dos
-> widgets, ainda válido como referência). Próxima etapa: **Etapa 6 —
-> Tendências**. Detalhes desta sessão na seção 24 — inclui uma pendência de
-> reverificação manual do ciclo "editar meta → Salvar → widget/Hoje
-> atualizam juntos" por flakiness do ADB no emulador usado nesta sessão, não
-> por falha observada no código. Etapas 0–1 na seção 20; Etapa 2 na seção 21;
-> Etapa 3 na seção 22; Etapa 4 na seção 23.
+> **Nota de sessão (2026-07-25, 13ª parte) — LEIA PRIMEIRO:** a **Etapa 6 —
+> Tendências** do `planning.md` foi implementada. A aba "Tendências" agora
+> mostra médias de 7/14/30 dias com variação vs. o período anterior, um
+> gráfico de calorias de 30 dias com a linha de meta, e a distribuição
+> acima/perto/abaixo da meta — tudo derivado do `HistoryRepository` (Etapa 1),
+> que ganhou seu primeiro chamador de `refresh()` nesta sessão. **A frente de
+> trabalho ativa continua sendo `planning.md`, não as seções 1–19 abaixo**
+> (histórico de ajustes dos widgets, ainda válido como referência). Próxima
+> etapa: **Etapa 7 — Padrões**. Detalhes desta sessão na seção 25. Etapas 0–1
+> na seção 20; Etapa 2 na seção 21; Etapa 3 na seção 22; Etapa 4 na seção 23;
+> Etapa 5 na seção 24 (inclui uma pendência de reverificação manual do ciclo
+> "editar meta → Salvar → widget/Hoje atualizam juntos" por flakiness do ADB
+> no emulador usado naquela sessão, não por falha observada no código).
 >
 > Nota de sessão (2026-07-25, 10ª parte): a **Etapa 3 — casca de navegação** do
 > `planning.md` foi implementada. `MainActivity` agora abre, por padrão, o novo
@@ -1378,8 +1379,116 @@ ViewModel por `USE_LEGACY_UI`, `OAuthCallbackAndEventEffects` generalizado),
   validação" acima) — a única lacuna entre o que foi implementado e o
   critério de conclusão formal da Etapa 5.
 - Checklist de `docs/widget-smoke-test.md` não reexecutado nesta sessão.
-- **Próximo passo:** Etapa 6 — Tendências (planning.md §9): média diária em
-  7/14/30 dias, variação vs. período anterior e o gráfico de calorias com a
-  linha de meta, consumindo `HistoryRepository` (Etapa 1) — que continua sem
-  nenhum chamador até aqui, e vai precisar de uma decisão de onde disparar
-  `refresh()` sem repetir o risco R5/R6.
+- **Próximo passo (concluído na sessão seguinte):** Etapa 6 — Tendências, ver
+  seção 25.
+
+## 25. Sessão 2026-07-25 (13ª parte) — Etapa 6: Tendências
+
+### Objetivo da sessão
+
+Implementar a **Etapa 6 — Tendências** do `planning.md` §9: média diária em
+7/14/30 dias, variação vs. período anterior, gráfico de calorias por dia com
+linha de meta, e distribuição acima/próximo/abaixo da meta. Etapas 0–5
+tratadas como concluídas e preservadas; nenhum widget, `MainActivity`,
+DataStore existente ou `AppContainer.syncAndRefresh()` foi tocado.
+
+### O que foi feito
+
+- [`fatsecret/domain/history/TrendCalculator.kt`](app/src/main/java/com/example/widgetfatsecret/fatsecret/domain/history/TrendCalculator.kt)
+  ganhou uma função pura nova, `distribution(days, goalCalories, tolerance = 0.05)`,
+  mais `GoalBand` (enum, não usado diretamente pela UI ainda — mantido para
+  clareza semântica) e `CalorieDistribution(above, near, below)`. Classifica
+  cada dia **registrado** da janela como acima/perto/abaixo da meta com uma
+  faixa de tolerância de 5% (perto = dentro de ±5% da meta). Dias sem registro
+  são pulados (nunca contam como "abaixo"); meta ≤ 0 devolve zero em tudo, em
+  vez de forçar uma classificação sem sentido. É a única adição a
+  `fatsecret/domain` nesta etapa — nenhuma função existente foi alterada.
+- [`ui/trends/TrendsViewModel.kt`](app/src/main/java/com/example/widgetfatsecret/ui/trends/TrendsViewModel.kt)
+  (novo) combina `repo.uiState` (snapshot + metas, para o chip de sync e a
+  meta de calorias) com `historyRepository.daysFlow`, e computa os três
+  `TrendSummary` (7/14/30) e a `CalorieDistribution` (sobre a janela de 30
+  dias) a cada emissão — cálculo síncrono e barato, sem I/O adicional.
+- **Decisão deliberada:** este ViewModel é o **primeiro chamador** de
+  `HistoryRepository.refresh()`, disparado uma vez em `init {}` no
+  `viewModelScope` da própria aba. O próprio docstring de `HistoryRepository`
+  (Etapa 1) já previa isso — "must only be called from an explicit refresh
+  once a history-consuming screen exists". Continua **não** entrando em
+  `AppContainer.syncAndRefresh()`: é um `refresh()` independente, com o custo
+  de quota próprio documentado no risco R6, e roda só quando a aba Tendências
+  é aberta (não no boot do app, então não conflita com R5 — é uma aba a mais
+  chamando o próprio repositório de histórico, não `repository.sync()`).
+- [`ui/trends/TrendsScreen.kt`](app/src/main/java/com/example/widgetfatsecret/ui/trends/TrendsScreen.kt)
+  (novo) monta, com os componentes da Etapa 2: `SyncStatusChip` no topo
+  (mesmo mapeamento privado `NutritionSnapshot -> SyncStatus` que
+  `TodayScreen.kt` já usa — duplicado de propósito, seguindo o mesmo padrão
+  já estabelecido de que o design system não conhece os modelos de dados);
+  três `StatCard` de janela (7/14/30 dias) com `MetricValue` da média +
+  `MetaChip` de variação (seta ↑/↓, **sem cor de julgamento** — mais/menos
+  calorias não é "bom" ou "ruim" por si, é só direção, mesmo princípio já
+  aplicado ao `WeightWidget` na seção 15); um `StatCard` com `BarChart`
+  (dias sem registro = contorno tracejado, nunca zero — já é o comportamento
+  nativo de `BarChart`/`BarDatum` da Etapa 2) com a linha de meta; e um
+  `StatCard` de distribuição com três linhas (`MetaChip` + contagem + %),
+  coral para "acima" (papel fixo do token = "over goal"), mint para "perto"
+  (papel fixo = "within goal"), e um ponto neutro (`text3`, sem papel fixo)
+  para "abaixo" — deliberado, para não sugerir que ficar abaixo da meta é
+  "bom": nenhum julgamento em qualquer direção (escopo negativo do deck).
+  Cada janela com menos de `TrendSummary.MIN_RECORDED_DAYS` (4) dias
+  registrados mostra o texto de "dados insuficientes" **dentro do próprio
+  card**, em vez de esconder o card inteiro — o card carrega a contagem
+  "X de Y dias" sempre visível, como o critério de conclusão da etapa exige.
+  Conta desconectada mostra `EmptyState`, igual ao padrão da `TodayScreen`.
+- [`ui/navigation/AppShell.kt`](app/src/main/java/com/example/widgetfatsecret/ui/navigation/AppShell.kt):
+  `Route.Tendencias` trocou o `PlaceholderScreen` por `TrendsRoute()`; só essa
+  linha e o import mudaram, mais um ajuste no comentário de topo do arquivo.
+
+### Por que a distribuição fica em `TrendCalculator`, não numa tela
+
+`planning.md` diz "sem alteração em data/domain existentes" para esta etapa —
+lido como "não altere o que já existe", não como "não adicione nada". A
+função é pura, testável isoladamente e não muda o comportamento de
+`summarize()` nem de nenhuma outra função já usada pelos widgets ou por outra
+tela — por isso ficou no calculador em vez de inline na `TrendsScreen`.
+
+### Testes e validação
+
+- Dois testes novos em
+  [`TrendCalculatorTest.kt`](app/src/test/java/com/example/widgetfatsecret/TrendCalculatorTest.kt):
+  `distributionBucketsAboveNearBelowGoalWithTolerance` (4 dias, um em cada
+  banda + um dentro da tolerância de 5%) e
+  `distributionSkipsGapsAndNonPositiveGoal` (meta 0 → tudo zero; dia sem
+  registro nunca conta como "abaixo").
+- `JAVA_HOME='C:\Program Files\Android\Android Studio\jbr' ./gradlew.bat testDebugUnitTest assembleDebug`
+  → **BUILD SUCCESSFUL**, 44 tarefas. **79 testes JVM, 0 falhas** (77
+  anteriores + 2 novos — confirmado via `app/build/test-results`, incluindo
+  `TrendCalculatorTest` isolado com 6/6 verdes).
+- **Não validado nesta sessão:** renderização visual da tela Tendências
+  (chip, cards, gráfico, distribuição) em claro/escuro num dispositivo/
+  emulador real — sem ambiente disponível nesta sessão, mesma limitação já
+  registrada desde a Etapa 0. Como nenhum widget, `MainActivity`, DataStore
+  existente ou `AppContainer.syncAndRefresh()` foi tocado (só uma rota do
+  `AppShell` trocou de composable e um novo `HistoryRepository.refresh()`
+  passou a ser chamado a partir de uma tela nova), o risco de regressão nos
+  widgets é baixo, mas o checklist de `docs/widget-smoke-test.md` continua
+  pendente de execução manual.
+- **Também não validado:** o custo de quota real de `HistoryRepository.refresh()`
+  contra a API (1–2 requisições por abertura da aba Tendências, via
+  `get_month`) — o código segue exatamente o que a Etapa 1 já implementou e
+  testou, mas o caminho fica exercitado pela primeira vez nesta sessão.
+
+### Arquivos criados/alterados
+
+Criados: `ui/trends/TrendsViewModel.kt`, `ui/trends/TrendsScreen.kt`.
+Alterados: `fatsecret/domain/history/TrendCalculator.kt` (função
+`distribution` + tipos novos, aditivo), `TrendCalculatorTest.kt` (2 testes
+novos), `ui/navigation/AppShell.kt` (rota `Tendencias` real),
+`planning.md` (Etapa 6 marcada ✅ + "Status real", cabeçalho de status),
+`handoff.md` (esta seção + nota de topo).
+
+### Próximo passo
+
+Etapa 7 — Padrões (planning.md §9): padrões por dia da semana (já existe
+`PatternCalculator`, Etapa 1, também sem chamador ainda), frequência fora da
+meta, e a folha de metodologia (`MethodologySheet`) exigida para todo insight
+— nenhum insight sobre alimentos individuais ou micronutrientes, conforme o
+escopo negativo do deck.

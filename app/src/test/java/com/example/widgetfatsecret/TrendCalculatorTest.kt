@@ -54,4 +54,26 @@ class TrendCalculatorTest {
         val s = TrendCalculator.summarize(listOf(day(98, 2000.0), day(100, 2000.0)), windowDays = 7, today = 100)
         assertFalse(s.hasEnoughData)
     }
+
+    @Test
+    fun distributionBucketsAboveNearBelowGoalWithTolerance() {
+        val s = TrendCalculator.summarize(
+            listOf(day(97, 2400.0), day(98, 2050.0), day(99, 1600.0), day(100, 2000.0)),
+            windowDays = 7,
+            today = 100,
+        )
+        val d = TrendCalculator.distribution(s.days, goalCalories = 2000.0)
+        assertEquals(1, d.above) // 2400 > 2000*1.05
+        assertEquals(2, d.near) // 2050 and 2000 within +-5%
+        assertEquals(1, d.below) // 1600 < 2000*0.95
+        assertEquals(4, d.recordedTotal)
+    }
+
+    @Test
+    fun distributionSkipsGapsAndNonPositiveGoal() {
+        val s = TrendCalculator.summarize(listOf(day(98, 2000.0)), windowDays = 4, today = 100)
+        assertEquals(0, TrendCalculator.distribution(s.days, goalCalories = 0.0).recordedTotal)
+        val withGap = TrendCalculator.distribution(s.days, goalCalories = 2000.0)
+        assertEquals(1, withGap.recordedTotal) // only the 1 recorded day counts, gaps skipped
+    }
 }
