@@ -2,6 +2,15 @@
 
 Atualizado em: 2026-07-25
 
+> **Nota de sessão (2026-07-25, 15ª parte) — LEIA PRIMEIRO:** a **Etapa 8 —
+> Consistência** do `planning.md` foi implementada. A aba agora mostra o
+> calendário mensal com quatro estados realmente distintos, sequência atual,
+> maior sequência e percentual dos últimos 30 dias. Metadados aditivos de meses
+> sincronizados impedem que “não sincronizado” seja confundido com “sem
+> entradas”. **A frente de trabalho ativa continua sendo `planning.md`, não as
+> seções históricas abaixo.** Próxima etapa: **Etapa 9 — Peso**. Detalhes desta
+> sessão na seção 27.
+>
 > **Nota de sessão (2026-07-25, 14ª parte) — LEIA PRIMEIRO:** a **Etapa 7 —
 > Padrões** do `planning.md` foi implementada. A aba "Padrões" agora mostra
 > médias por dia da semana, ciclo dias úteis × fim de semana, frequências em
@@ -1574,5 +1583,75 @@ emoji, julgamento, alimento individual, micronutriente, score ou conselho.
   a Etapa 7 não altera a infraestrutura ou o layout dos widgets.
 - A sincronização detalhada de refeições históricas continua fora de escopo. A
   tela comunica essa limitação em vez de inferir dados inexistentes.
+- A Etapa 8, que era o próximo passo ao fim desta sessão histórica, foi concluída
+  posteriormente e está documentada na seção 27.
+
+## 27. Sessão 2026-07-25 (15ª parte) — Etapa 8: Consistência
+
+### Objetivo da sessão
+
+Implementar somente a **Etapa 8 — Consistência** do `planning.md`, considerando
+as Etapas 0–7 concluídas e preservando toda a infraestrutura dos widgets. As
+novas superfícies seguem `assets/design.md`: paleta grafite azulada, cards planos,
+tipografia existente, nenhum gradiente ou emoji, cor nunca como único canal e
+linguagem descritiva, sem cobrança.
+
+### Distinção real entre ausência e falta de sincronização
+
+- [`NutritionHistoryStore.kt`](app/src/main/java/com/example/widgetfatsecret/fatsecret/data/history/NutritionHistoryStore.kt)
+  ganhou apenas a chave aditiva `synced_months` no DataStore dedicado
+  `nutrition_history`. Ela registra quais meses tiveram resposta bem-sucedida da
+  API, inclusive quando a resposta veio vazia. As chaves e os DataStores usados
+  pelos widgets permanecem intactos.
+- [`HistoryRepository.kt`](app/src/main/java/com/example/widgetfatsecret/fatsecret/data/history/HistoryRepository.kt)
+  expõe `historyFlow` (dias + cobertura) e grava os dois de forma atômica após
+  cada `get_month`. A seleção dos meses agora usa `YearMonth.minusMonths()`;
+  subtrair 30 dias no dia 31 podia cair no mesmo mês e deixar a virada anterior
+  sem cobertura.
+- [`ConsistencyCalculator.kt`](app/src/main/java/com/example/widgetfatsecret/fatsecret/domain/history/ConsistencyCalculator.kt)
+  representa quatro estados: `RECORDED`, `NO_ENTRIES`, `NOT_SYNCED` e `FUTURE`.
+  Dias não sincronizados ficam fora do denominador do percentual; dias futuros
+  também não contam. Uma lacuna conhecida ou desconhecida encerra uma sequência,
+  sem transformar ausência em consumo zero.
+
+### Interface
+
+- [`ConsistencyViewModel.kt`](app/src/main/java/com/example/widgetfatsecret/ui/consistency/ConsistencyViewModel.kt)
+  combina o snapshot com o histórico, calcula o mês corrente completo e uma
+  janela móvel de 30 dias. O refresh histórico continua isolado de
+  `AppContainer.syncAndRefresh()` e dos widgets.
+- [`ConsistencyScreen.kt`](app/src/main/java/com/example/widgetfatsecret/ui/consistency/ConsistencyScreen.kt)
+  mostra `SyncStatusChip`, calendário mensal, legenda nominal dos quatro estados,
+  sequência atual, maior sequência e percentual da janela de 30 dias com amostra
+  explícita. O texto explica que “sem entradas” e “não sincronizado” são estados
+  diferentes e mantém tom estritamente descritivo.
+- [`CalendarGrid.kt`](app/src/main/java/com/example/widgetfatsecret/ui/design/CalendarGrid.kt)
+  é o novo componente de design: registrado usa preenchimento mint; sem entradas,
+  superfície com contorno sólido; não sincronizado, contorno âmbar tracejado;
+  futuro, contorno e texto atenuados. Cada célula também expõe data e estado na
+  descrição semântica, de modo que cor nunca é o único canal.
+- `ui/navigation/AppShell.kt`: `Route.Consistencia` trocou o placeholder por
+  `ConsistencyRoute()`. Nenhuma outra rota mudou de comportamento.
+
+### Testes e validação
+
+- `ConsistencyCalculatorTest` cobre: histórico sem cobertura, quatro estados no
+  mesmo mês parcial, lacunas em sequências, virada de mês, dias futuros e exclusão
+  de dias não sincronizados do percentual.
+- `JAVA_HOME='C:\Program Files\Android\Android Studio\jbr' .\gradlew.bat
+  :app:testDebugUnitTest :app:assembleDebug` → **BUILD SUCCESSFUL**.
+  **84 testes JVM, 0 falhas**.
+- APK instalado no `emulator-5554`. Com os dados reais persistidos, a tela mostrou
+  julho de 2026 com 20 dias registrados, sequência atual/maior de 18 dias e 77%
+  de dias registrados na janela (23 de 30). Calendário, legenda, rolagem e cards
+  foram inspecionados; nenhum erro `AndroidRuntime` apareceu no logcat consultado.
+- Nenhum arquivo de widget/receiver, manifesto, `MainActivity`, DataStore usado
+  pelos widgets ou `AppContainer.syncAndRefresh()` foi alterado. A regra de ouro
+  foi reverificada: nenhum import de `ui.*` em `fatsecret/`.
+
+### Pendências e próximo passo
+
+- O checklist manual completo de `docs/widget-smoke-test.md` não foi reexecutado;
+  esta etapa não altera infraestrutura, dados ou renderização dos widgets.
 - Próximo passo autorizado pelo plano, mas **não implementado nesta sessão**:
-  Etapa 8 — Consistência.
+  Etapa 9 — Peso.

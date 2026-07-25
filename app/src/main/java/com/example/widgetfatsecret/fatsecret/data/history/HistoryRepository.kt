@@ -11,6 +11,8 @@ import com.example.widgetfatsecret.fatsecret.domain.history.TrendCalculator
 import com.example.widgetfatsecret.fatsecret.domain.history.TrendSummary
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import java.time.LocalDate
+import java.time.YearMonth
 
 /**
  * Read side (Flows derived from the stored history) plus the one write path
@@ -24,6 +26,7 @@ class HistoryRepository(
 ) {
 
     val daysFlow: Flow<List<DayNutrition>> = store.daysFlow
+    val historyFlow: Flow<NutritionHistory> = store.historyFlow
 
     fun trend(windowDays: Int, today: Long = FatSecretDate.today()): Flow<TrendSummary> =
         daysFlow.map { TrendCalculator.summarize(it, windowDays, today) }
@@ -32,7 +35,15 @@ class HistoryRepository(
         daysFlow.map { PatternCalculator.summarize(it, windowDays, today) }
 
     fun consistency(windowDays: Int = 30, today: Long = FatSecretDate.today()): Flow<ConsistencySummary> =
-        daysFlow.map { ConsistencyCalculator.summarize(it, windowDays, today) }
+        historyFlow.map { history ->
+            val start = today - windowDays + 1
+            ConsistencyCalculator.summarize(
+                history = history.days,
+                syncedDays = history.syncedDaysBetween(start, today),
+                windowDays = windowDays,
+                today = today,
+            )
+        }
 
     /**
      * Fetches the calendar month containing [today] plus [monthsBack] prior
@@ -43,12 +54,15 @@ class HistoryRepository(
      */
     suspend fun refresh(today: Long = FatSecretDate.today(), monthsBack: Int = 1) {
         for (offset in 0..monthsBack) {
-            // get_month resolves the calendar month containing `date`;
-            // stepping back ~30 days per offset is enough to land a step in
-            // the previous month regardless of which day of the month it is.
-            val probeDay = today - offset * 30
+            // Calendar arithmetic matters here: subtracting 30 epoch days on
+            // the 31st can still land in the same month and skip the previous
+            // one, leaving a false "nao sincronizado" gap at the rollover.
+            val probeDay = YearMonth.from(LocalDate.ofEpochDay(today))
+                .minusMonths(offset.toLong())
+                .atDay(1)
+                .toEpochDay()
             val fetched = runCatching { foodClient.getMonth(probeDay) }.getOrNull() ?: continue
-            store.merge(fetched)
+            store.mergeSyncedMonth(probeDay, fetched)
         }
     }
 }

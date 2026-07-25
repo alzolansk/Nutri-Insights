@@ -32,6 +32,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.example.widgetfatsecret.ui.account.AccountViewModel
 import com.example.widgetfatsecret.ui.account.GoalsAccountRoute
+import com.example.widgetfatsecret.ui.consistency.ConsistencyRoute
 import com.example.widgetfatsecret.ui.design.EmptyState
 import com.example.widgetfatsecret.ui.patterns.PatternsRoute
 import com.example.widgetfatsecret.ui.theme.nutriColors
@@ -92,10 +93,7 @@ fun AppShell(accountViewModel: AccountViewModel, modifier: Modifier = Modifier) 
                 PatternsRoute()
             }
             composable<Route.Consistencia> {
-                PlaceholderScreen(
-                    title = "Consistência",
-                    description = "O calendário mensal e as sequências chegam na Etapa 8.",
-                )
+                ConsistencyRoute()
             }
             composable<Route.Peso> {
                 PlaceholderScreen(

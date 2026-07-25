@@ -1,6 +1,6 @@
 # Plano de Evolução — WidgetFatSecret → Nutri Insights
 
-> **Status:** Etapas 0, 1, 2, 3, 4, 5, 6 e 7 implementadas (ver §9). Etapas 8–11
+> **Status:** Etapas 0, 1, 2, 3, 4, 5, 6, 7 e 8 implementadas (ver §9). Etapas 9–11
 > seguem apenas planejadas, aguardando aprovação para prosseguir.
 > **Premissa central:** os widgets de tela inicial são o que já funciona hoje e são
 > intocáveis. Toda a evolução é **aditiva** — nada da infraestrutura atual é removido
@@ -679,7 +679,7 @@ Etapa 11 Remoção do legado
 
 ---
 
-### Etapa 8 — Consistência
+### Etapa 8 — Consistência ✅ concluída (2026-07-25)
 
 - **Objetivo:** calendário mensal com quatro estados de ausência, sequência atual,
   maior sequência, percentual de 30 dias.
@@ -691,6 +691,28 @@ Etapa 11 Remoção do legado
   cobrança no texto; "não sincronizado" nunca é confundido com "sem entradas".
 - **Build e testes:** `:app:testDebugUnitTest` (sequências com lacunas, mês
   parcial, virada de mês), `:app:assembleDebug`.
+- **Status real:** implementado. O histórico ganhou metadados aditivos de meses
+  sincronizados no mesmo DataStore dedicado da Etapa 1; um retorno mensal vazio
+  agora é persistido como cobertura válida, permitindo distinguir de forma real
+  `registrado`, `sem entradas`, `não sincronizado` e `futuro`. O refresh usa
+  aritmética de `YearMonth`, evitando repetir o mês atual ao voltar 30 dias a
+  partir do dia 31. `ConsistencyCalculator` calcula sequências e o percentual
+  somente sobre dias sincronizados; lacunas encerram sequências, dias futuros e
+  não sincronizados não são tratados como zero. A nova
+  [`ui/consistency/ConsistencyScreen.kt`](app/src/main/java/com/example/widgetfatsecret/ui/consistency/ConsistencyScreen.kt)
+  mostra calendário mensal, legenda nominal dos quatro estados, sequência atual,
+  maior sequência e percentual da janela de 30 dias. O novo
+  [`ui/design/CalendarGrid.kt`](app/src/main/java/com/example/widgetfatsecret/ui/design/CalendarGrid.kt)
+  diferencia estados por preenchimento/contorno/tracejado além da cor e fornece
+  descrições semânticas por dia. A rota `Consistencia` do `AppShell` trocou o
+  placeholder pela tela real. `:app:testDebugUnitTest` (**84 testes, 0 falhas**)
+  e `:app:assembleDebug` verdes. APK validado no `emulator-5554` com dados reais:
+  20 dias registrados no mês, sequência atual/maior de 18 dias e 77% em 30 dias;
+  sem crash no logcat. Nenhum widget, receiver, manifesto, DataStore existente
+  dos widgets, `MainActivity` ou `AppContainer.syncAndRefresh()` foi tocado; a
+  regra de ouro (0 imports de `ui.*` em `fatsecret/`) foi reverificada. O
+  checklist manual completo dos widgets continua pendente, pois a etapa não
+  alterou sua infraestrutura ou renderização.
 
 ---
 
