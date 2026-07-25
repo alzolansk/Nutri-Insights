@@ -26,8 +26,10 @@ import com.example.widgetfatsecret.ui.FatSecretViewModel
 import com.example.widgetfatsecret.ui.GoalsSettingsScreen
 import com.example.widgetfatsecret.ui.MainScreen
 import com.example.widgetfatsecret.ui.UiEvent
+import com.example.widgetfatsecret.ui.account.AccountViewModel
 import com.example.widgetfatsecret.ui.navigation.AppShell
 import com.example.widgetfatsecret.ui.theme.WidgetFatSecretTheme
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collectLatest
 
 /**
@@ -50,17 +52,22 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             WidgetFatSecretTheme {
-                val vm: FatSecretViewModel = viewModel()
-
-                // Tratamento do deep link OAuth e dos eventos do ViewModel vive
+                // Tratamento do deep link OAuth e dos eventos do ViewModel vivem
                 // aqui, fora de AppRoot/AppShell, para continuar funcionando
                 // identicamente não importa qual UI está visível (planning.md §6).
-                OAuthCallbackAndEventEffects(vm, callbackUri)
-
+                // Só UM dos dois ViewModels é instanciado por processo — nunca os
+                // dois — para que o sync de abertura não dispare duas vezes
+                // (planning.md §7/§10, risco R5): o legado usa FatSecretViewModel
+                // até a Etapa 11 remover a UI antiga; a UI nova usa AccountViewModel
+                // desde a Etapa 5.
                 if (USE_LEGACY_UI) {
+                    val vm: FatSecretViewModel = viewModel()
+                    OAuthCallbackAndEventEffects(vm.events, vm::handleCallback, callbackUri)
                     AppRoot(vm)
                 } else {
-                    AppShell()
+                    val vm: AccountViewModel = viewModel()
+                    OAuthCallbackAndEventEffects(vm.events, vm::handleCallback, callbackUri)
+                    AppShell(accountViewModel = vm)
                 }
             }
         }
@@ -76,20 +83,24 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun OAuthCallbackAndEventEffects(vm: FatSecretViewModel, callbackUri: MutableState<Uri?>) {
+private fun OAuthCallbackAndEventEffects(
+    events: Flow<UiEvent>,
+    onCallback: (Uri) -> Unit,
+    callbackUri: MutableState<Uri?>,
+) {
     val context = LocalContext.current
 
     // Consume a deep-link callback (oauth_verifier) exactly once.
     LaunchedEffect(callbackUri.value) {
         callbackUri.value?.let {
-            vm.handleCallback(it)
+            onCallback(it)
             callbackUri.value = null
         }
     }
 
     // One-shot events: open the authorize URL, or show a message.
     LaunchedEffect(Unit) {
-        vm.events.collectLatest { event ->
+        events.collectLatest { event ->
             when (event) {
                 is UiEvent.OpenBrowser -> runCatching {
                     context.startActivity(Intent(Intent.ACTION_VIEW, event.url.toUri()))

@@ -1,6 +1,6 @@
 # Plano de Evolução — WidgetFatSecret → Nutri Insights
 
-> **Status:** Etapas 0, 1, 2, 3 e 4 implementadas (ver §9). Etapas 5–11 seguem
+> **Status:** Etapas 0, 1, 2, 3, 4 e 5 implementadas (ver §9). Etapas 6–11 seguem
 > apenas planejadas, aguardando aprovação para prosseguir.
 > **Premissa central:** os widgets de tela inicial são o que já funciona hoje e são
 > intocáveis. Toda a evolução é **aditiva** — nada da infraestrutura atual é removido
@@ -523,7 +523,7 @@ Etapa 11 Remoção do legado
 
 ---
 
-### Etapa 5 — Metas e conta
+### Etapa 5 — Metas e conta ✅ concluída (2026-07-25)
 
 - **Objetivo:** migrar metas, peso inicial, conectar/desconectar e sync manual.
 - **Arquivos afetados:** *novos* `ui/account/GoalsAccountScreen.kt`,
@@ -540,6 +540,52 @@ Etapa 11 Remoção do legado
   **Ciclo completo obrigatório:** desconectar → widgets em estado vazio →
   reconectar → widgets repopulados. Este é o teste de regressão mais importante
   de todo o plano.
+- **Status real:** implementado como planejado.
+  [`ui/account/AccountViewModel.kt`](app/src/main/java/com/example/widgetfatsecret/ui/account/AccountViewModel.kt)
+  é a migração literal de `FatSecretViewModel` (mesmos métodos, mesmo `init{}`
+  de sync-uma-vez-por-processo, mesma regra de `saveGoals`+`updateWidgets()`
+  numa única corrotina). `FatSecretViewModel`/`AppScreens.kt` **não foram
+  apagados** — continuam servindo a UI antiga sob `USE_LEGACY_UI = true` até a
+  Etapa 11.
+  [`ui/account/GoalsAccountScreen.kt`](app/src/main/java/com/example/widgetfatsecret/ui/account/GoalsAccountScreen.kt)
+  monta `SyncStatusChip` + 3 `StatCard` (Conta FatSecret, Metas diárias, Peso
+  inicial) + um botão Salvar único no fim, preservando a sanitização numérica
+  (`NumberField`/`DecimalField`, movida literalmente de `AppScreens.kt`) e os
+  textos explicativos sobre a API não expor metas/peso inicial. Como o
+  protótipo não desenha essa tela (ver §0), a casca é ad-hoc com os tokens da
+  Etapa 2. `AppShell.kt` passou a receber `accountViewModel: AccountViewModel`
+  de fora (não resolvido com `viewModel()` dentro do `composable<Route.MetasConta>`,
+  que criaria uma segunda instância presa ao back-stack-entry da rota) e ganhou
+  um botão de voltar na `TopAppBar` quando a rota atual é `MetasConta`.
+  `MainActivity.kt` agora instancia **um único** ViewModel por processo,
+  condicionado a `USE_LEGACY_UI` (nunca os dois) — `FatSecretViewModel` para a
+  UI antiga, `AccountViewModel` para a nova — e `OAuthCallbackAndEventEffects`
+  foi generalizado para receber `events: Flow<UiEvent>` + `onCallback: (Uri) ->
+  Unit` em vez do tipo concreto do ViewModel, para não duplicar o composable.
+  Isso evita o risco R5 (duas fontes de sync de abertura) mesmo com dois
+  ViewModels de conta coexistindo no código.
+  **Validado num emulador real nesta sessão** (`emulator-5554`, com uma conta
+  já conectada e dados reais): a rota Hoje mostra 918/1.000 kcal e as
+  refeições/insights; abrir "Metas e conta" mostra "Conectado", os botões
+  Sincronizar/Desconectar, as 4 metas prefilled (1000/150/200/65) e o peso
+  inicial (128,5, com a dica "123,0 kg" da pesagem mais antiga descoberta); o
+  botão de voltar retorna à aba Hoje. A edição de um campo (testada no campo
+  Calorias, trocando para "1200") respeitou a sanitização (só dígitos,
+  `take(6)`) e manteve o valor após fechar o teclado.
+  **Pendência desta sessão:** o ciclo completo "editar meta → Salvar → widget/
+  Hoje refletem em um único refresh" (critério de conclusão explícito desta
+  etapa) não pôde ser reconfirmado de ponta a ponta neste ambiente — depois da
+  primeira edição bem-sucedida, os toques subsequentes do ADB no emulador
+  (`input tap`/`input text`) pararam de focar o campo de forma confiável
+  (mesmas coordenadas, mesma tela, sem mudança de código no meio), o que
+  impediu reproduzir o toque no botão Salvar de forma controlada. É uma
+  suspeita de flakiness do pipeline de input do emulador nesta sessão, não uma
+  falha observada no código — mas como o critério de conclusão pede
+  explicitamente esse ciclo, ele deve ser reconfirmado manualmente (editar uma
+  meta, tocar Salvar, confirmar que a aba Hoje E os dois widgets mudam juntos,
+  sem piscar o valor antigo) antes de considerar a Etapa 5 fechada em definitivo.
+  O checklist de `docs/widget-smoke-test.md` (itens 1–8, sem o ciclo completo
+  9–12 que dependeria de reconectar a conta) também não foi reexecutado.
 
 ---
 

@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -29,6 +30,8 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.example.widgetfatsecret.ui.account.AccountViewModel
+import com.example.widgetfatsecret.ui.account.GoalsAccountRoute
 import com.example.widgetfatsecret.ui.design.EmptyState
 import com.example.widgetfatsecret.ui.theme.nutriColors
 import com.example.widgetfatsecret.ui.today.TodayRoute
@@ -36,13 +39,18 @@ import com.example.widgetfatsecret.ui.today.TodayRoute
 /**
  * Casca de navegação do "Nutri Insights" (planning.md §9, Etapa 3): Scaffold +
  * barra de navegação com as 5 abas + rota de Metas/Conta aberta pelo avatar no
- * topo. `Hoje` já tem conteúdo real desde a Etapa 4 ([TodayRoute]); as demais
- * rotas mostram apenas um placeholder até as Etapas 5-9. O NavHost não sabe
- * nada sobre OAuth: o deep link continua tratado pela Activity (planning.md
- * §6, item 4).
+ * topo. `Hoje` tem conteúdo real desde a Etapa 4 ([TodayRoute]) e `Metas e
+ * conta` desde a Etapa 5 ([GoalsAccountRoute]); as demais rotas mostram um
+ * placeholder até as Etapas 6-9. O NavHost não sabe nada sobre OAuth: o deep
+ * link continua tratado pela Activity (planning.md §6, item 4).
+ *
+ * [accountViewModel] é recebido de fora (não resolvido aqui com `viewModel()`)
+ * porque precisa ser a MESMA instância que a Activity usa para tratar o
+ * callback OAuth e o sync de abertura — resolvê-lo dentro do `composable<Route.MetasConta>`
+ * criaria uma segunda instância presa ao back stack entry da rota.
  */
 @Composable
-fun AppShell(modifier: Modifier = Modifier) {
+fun AppShell(accountViewModel: AccountViewModel, modifier: Modifier = Modifier) {
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = backStackEntry?.destination
@@ -52,6 +60,8 @@ fun AppShell(modifier: Modifier = Modifier) {
         modifier = modifier,
         topBar = {
             AppTopBar(
+                showBack = onMetasConta,
+                onBackClick = { navController.popBackStack() },
                 onAvatarClick = {
                     navController.navigate(Route.MetasConta) { launchSingleTop = true }
                 },
@@ -96,10 +106,7 @@ fun AppShell(modifier: Modifier = Modifier) {
                 )
             }
             composable<Route.MetasConta> {
-                PlaceholderScreen(
-                    title = "Metas e conta",
-                    description = "Metas, conectar/desconectar e sincronização manual chegam na Etapa 5.",
-                )
+                GoalsAccountRoute(viewModel = accountViewModel)
             }
         }
     }
@@ -107,21 +114,30 @@ fun AppShell(modifier: Modifier = Modifier) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun AppTopBar(onAvatarClick: () -> Unit) {
+private fun AppTopBar(showBack: Boolean, onBackClick: () -> Unit, onAvatarClick: () -> Unit) {
     val colors = MaterialTheme.nutriColors
     TopAppBar(
-        title = { Text("Nutri Insights") },
+        title = { Text(if (showBack) "Metas e conta" else "Nutri Insights") },
+        navigationIcon = {
+            if (showBack) {
+                IconButton(onClick = onBackClick) {
+                    Text(text = "←", color = colors.text)
+                }
+            }
+        },
         actions = {
-            Box(
-                modifier = Modifier
-                    .padding(end = 12.dp)
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .background(colors.surface2, CircleShape)
-                    .clickable(onClick = onAvatarClick),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(text = "⚙", color = colors.text)
+            if (!showBack) {
+                Box(
+                    modifier = Modifier
+                        .padding(end = 12.dp)
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(colors.surface2, CircleShape)
+                        .clickable(onClick = onAvatarClick),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(text = "⚙", color = colors.text)
+                }
             }
         },
         colors = TopAppBarDefaults.topAppBarColors(

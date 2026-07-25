@@ -2,14 +2,18 @@
 
 Atualizado em: 2026-07-25
 
-> **Nota de sessão (2026-07-25, 11ª parte) — LEIA PRIMEIRO:** a **Etapa 4 —
-> Tela Hoje** do `planning.md` foi implementada. A rota `Hoje` do `AppShell`
-> agora mostra dados reais (anel de meta, macros, refeições, "Leitura do dia",
-> chip de sync) em vez do placeholder da Etapa 3. **A frente de trabalho ativa
-> continua sendo `planning.md`, não as seções 1–19 abaixo** (histórico de
-> ajustes dos widgets, ainda válido como referência). Próxima etapa: **Etapa 5
-> — Metas e conta**. Detalhes desta sessão na seção 23. Etapas 0–1 na seção 20;
-> Etapa 2 na seção 21; Etapa 3 na seção 22.
+> **Nota de sessão (2026-07-25, 12ª parte) — LEIA PRIMEIRO:** a **Etapa 5 —
+> Metas e conta** do `planning.md` foi implementada. O avatar/engrenagem no
+> topo do `AppShell` agora abre uma tela real de "Metas e conta"
+> (conectar/desconectar, sincronizar, metas diárias, peso inicial) em vez do
+> placeholder da Etapa 3. **A frente de trabalho ativa continua sendo
+> `planning.md`, não as seções 1–19 abaixo** (histórico de ajustes dos
+> widgets, ainda válido como referência). Próxima etapa: **Etapa 6 —
+> Tendências**. Detalhes desta sessão na seção 24 — inclui uma pendência de
+> reverificação manual do ciclo "editar meta → Salvar → widget/Hoje
+> atualizam juntos" por flakiness do ADB no emulador usado nesta sessão, não
+> por falha observada no código. Etapas 0–1 na seção 20; Etapa 2 na seção 21;
+> Etapa 3 na seção 22; Etapa 4 na seção 23.
 >
 > Nota de sessão (2026-07-25, 10ª parte): a **Etapa 3 — casca de navegação** do
 > `planning.md` foi implementada. `MainActivity` agora abre, por padrão, o novo
@@ -1246,3 +1250,136 @@ hits de `ui.*` em `fatsecret/` reconfirmado.
   `AccountViewModel` dentro da rota `MetasConta` do `AppShell`, mantendo o
   ciclo completo de OAuth (`beginConnect` → navegador → deep link →
   `completeConnect`) idêntico ao atual.
+
+## 24. Sessão 2026-07-25 (12ª parte) — Etapa 5 do planning.md: Metas e conta
+
+### Contexto
+
+Continuação direta da seção 23. As Etapas 0–4 já estavam feitas (histórico de
+dados, design system, casca de navegação, tela Hoje). Esta sessão implementou
+a **Etapa 5 — Metas e conta**: migrar `connect()`/`disconnect()`/`syncNow()`/
+`saveGoals()` (hoje em `FatSecretViewModel`, servindo só a UI antiga) para a
+rota `MetasConta` do `AppShell`, que até aqui era um placeholder.
+
+### O que foi feito
+
+- **[`ui/account/AccountViewModel.kt`](app/src/main/java/com/example/widgetfatsecret/ui/account/AccountViewModel.kt)**
+  (novo): migração literal de `FatSecretViewModel` — mesmos métodos
+  (`connect`, `handleCallback`, `syncNow`, `disconnect`, `saveGoals`,
+  `messageForPublic`), mesmo `init{}` (marca `connected`, agenda
+  `SyncScheduler.ensurePeriodic` e dispara `syncNow()` uma vez se já
+  conectado), mesma disciplina de uma única corrotina para
+  `saveGoals`+`saveStartWeight`+`updateWidgets()` (a razão documentada no
+  código: dois `updateAll()` concorrentes fazem o Glance manter o valor
+  antigo — bug já corrigido e registrado na seção 19). Reaproveita
+  `com.example.widgetfatsecret.ui.UiEvent` (o mesmo sealed interface que
+  `FatSecretViewModel` já usa) em vez de duplicar o contrato de eventos.
+  **`FatSecretViewModel` e `AppScreens.kt` não foram apagados** — continuam
+  intactos, servindo a UI antiga sob `USE_LEGACY_UI = true`, até a Etapa 11.
+- **[`ui/account/GoalsAccountScreen.kt`](app/src/main/java/com/example/widgetfatsecret/ui/account/GoalsAccountScreen.kt)**
+  (novo): `GoalsAccountRoute` (coleta os `StateFlow`s do ViewModel) +
+  `GoalsAccountScreen` (presentational). Estrutura, de cima para baixo:
+  `SyncStatusChip` (Etapa 2); `StatCard` "Conta FatSecret" (status
+  Conectado/Desconectado + botões Sincronizar/Desconectar quando conectado,
+  ou Conectar quando não); `StatCard` "Metas diárias" (4 campos numéricos +
+  o texto explicativo sobre a API não expor metas — migrado literalmente de
+  `GoalsSettingsScreen`); `StatCard` "Peso inicial" (campo decimal + o texto
+  sobre a pesagem mais antiga descoberta como dica); um único
+  `NutriPrimaryButton` "Salvar" no fim, que empacota os 4 números + o peso
+  inicial numa única chamada a `onSave(goals, startWeightKg)` — preservando a
+  regra de "uma meta, um save, um refresh". A sanitização numérica
+  (`NumberField`: só dígitos, `take(6)`; `DecimalField`: um único separador
+  decimal, aceita vírgula ou ponto) foi movida como estava de `AppScreens.kt`,
+  sem alterar o comportamento.
+  Não existe design de referência para esta tela no protótipo (achado já
+  registrado em planning.md §0), então a casca visual é ad-hoc com os tokens
+  da Etapa 2 (raios, `StatCard`, botões mint/coral) — os textos e o
+  comportamento são a migração literal do que já existia.
+- **`ui/navigation/AppShell.kt`:** a rota `Route.MetasConta` agora renderiza
+  `GoalsAccountRoute(viewModel = accountViewModel)` em vez do
+  `PlaceholderScreen`. `AppShell` passou a receber `accountViewModel:
+  AccountViewModel` como parâmetro (em vez de resolver um com `viewModel()`
+  dentro do próprio Shell): resolver o ViewModel dentro do
+  `composable<Route.MetasConta>` criaria uma instância presa ao
+  `NavBackStackEntry` daquela rota, diferente da instância que a Activity usa
+  para tratar o callback OAuth e o sync de abertura — os dois nunca podem ser
+  a mesma coisa por acidente, o parâmetro explícito garante isso. A
+  `TopAppBar` ganhou um botão de voltar (`←`) que aparece só quando a rota
+  atual é `MetasConta`, chamando `navController.popBackStack()`; o avatar "⚙"
+  fica escondido nesse estado (título muda para "Metas e conta").
+- **`MainActivity.kt`:** agora instancia exatamente **um** ViewModel por
+  processo, escolhido pela flag já existente `USE_LEGACY_UI` — nunca os dois
+  ao mesmo tempo, que seria um sync de abertura duplicado (risco R5 do
+  planning.md). `OAuthCallbackAndEventEffects` foi generalizado: em vez de
+  receber o `FatSecretViewModel` concreto, recebe `events: Flow<UiEvent>` +
+  `onCallback: (Uri) -> Unit`, para servir tanto `FatSecretViewModel` quanto
+  `AccountViewModel` sem duplicar o composable de efeitos (deep link OAuth +
+  Toast de mensagens/abrir navegador).
+
+### Por que nenhum widget foi afetado
+
+Nenhuma linha de `fatsecret/widget`, `fatsecret/work`, `fatsecret/oauth`, dos
+DataStores existentes, do manifesto ou de `FatSecretRepository`/
+`AppContainer` foi tocada — a Etapa 5 é inteiramente "fiação de UI" sobre
+métodos que já existiam no repositório. `grep` sem hits de `ui.*` em
+`fatsecret/` reconfirmado.
+
+### Testes e validação
+
+- `./gradlew :app:testDebugUnitTest` → **77 testes, 0 falhas** (inalterados —
+  nenhuma lógica nova testável em JVM nesta etapa; é puramente ViewModel +
+  Compose reaproveitando funções puras já testadas).
+- `./gradlew :app:assembleDebug` → **BUILD SUCCESSFUL**.
+- **Validado num emulador real** (`emulator-5554`, disponível nesta sessão —
+  diferente das Etapas 0–4, que não tiveram dispositivo): app instalado e
+  aberto com uma conta já conectada e dados reais. Confirmado por
+  screenshot:
+  - Aba Hoje mostra 918/1.000 kcal, macros, refeições (Almoço/Lanches/Café da
+    manhã) e "Leitura do dia" — sem regressão da Etapa 4.
+  - Tocar no avatar "⚙" abre "Metas e conta" com "Conectado", os botões
+    Sincronizar/Desconectar, os 4 campos de meta prefilled (1000/150/200/65)
+    e o peso inicial (128,5, com a dica "123,0 kg" da pesagem mais antiga
+    descoberta pela caminhada de baseline da seção 19).
+  - O botão de voltar retorna à aba Hoje corretamente.
+  - Editar o campo Calorias (trocar "1000" por "1200") respeitou a
+    sanitização (só dígitos aceitos, `take(6)`) e o valor persistiu na tela
+    depois de fechar o teclado — confirma que o `remember(goals)` e o
+    `onValueChange` da migração de `AppScreens.kt` funcionam identicamente na
+    nova casca.
+- **Não confirmado nesta sessão:** o ciclo completo "tocar Salvar → `saveGoals`
+  grava → widgets e a aba Hoje atualizam num único refresh" — o critério de
+  conclusão explícito desta etapa. Depois da primeira edição de campo bem-
+  sucedida (acima), os toques subsequentes via `adb shell input tap`/`input
+  text` no mesmo campo, na mesma tela, pararam de focar o `OutlinedTextField`
+  de forma confiável (o campo simplesmente não recebia foco/teclado, sem
+  nenhuma mudança de código entre uma tentativa e outra). Isso tem cara de
+  flakiness do pipeline de input do emulador/ADB nesta sessão específica
+  (input synthetic events podem ser engolidos silenciosamente pelo
+  SurfaceFlinger/InputDispatcher sob certas condições), não de um bug no
+  código — mas como não foi isolado com certeza, o ciclo completo (editar
+  uma meta → Salvar → confirmar que a aba Hoje E os dois widgets de tela
+  inicial mudam juntos, sem piscar o valor antigo) deve ser reconfirmado
+  manualmente antes de tratar a Etapa 5 como definitivamente fechada. O
+  checklist de `docs/widget-smoke-test.md` também não foi reexecutado nesta
+  sessão.
+
+### Arquivos criados/alterados
+
+Criados: `ui/account/AccountViewModel.kt`, `ui/account/GoalsAccountScreen.kt`.
+Alterados: `ui/navigation/AppShell.kt` (parâmetro `accountViewModel`, botão de
+voltar na `TopAppBar`, rota `MetasConta` real), `MainActivity.kt` (escolha de
+ViewModel por `USE_LEGACY_UI`, `OAuthCallbackAndEventEffects` generalizado),
+`planning.md` (Etapa 5 marcada ✅ + "Status real", cabeçalho de status),
+`handoff.md` (esta seção + nota de topo).
+
+### Pendências desta sessão
+
+- Reconfirmar manualmente o ciclo completo de salvar meta (ver "Testes e
+  validação" acima) — a única lacuna entre o que foi implementado e o
+  critério de conclusão formal da Etapa 5.
+- Checklist de `docs/widget-smoke-test.md` não reexecutado nesta sessão.
+- **Próximo passo:** Etapa 6 — Tendências (planning.md §9): média diária em
+  7/14/30 dias, variação vs. período anterior e o gráfico de calorias com a
+  linha de meta, consumindo `HistoryRepository` (Etapa 1) — que continua sem
+  nenhum chamador até aqui, e vai precisar de uma decisão de onde disparar
+  `refresh()` sem repetir o risco R5/R6.
