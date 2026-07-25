@@ -2,6 +2,18 @@
 
 Atualizado em: 2026-07-25
 
+> **Nota de sessão (2026-07-25, 9ª parte) — LEIA PRIMEIRO:** o projeto entrou
+> numa fase nova. Existe um `planning.md` na raiz com o plano completo de
+> evolução para "Nutri Insights" (app com navegação por abas, mantendo os
+> widgets intocados). As Etapas 0, 1 e **2** (design system) do plano já foram
+> implementadas. **A frente de trabalho ativa a partir de agora é `planning.md`,
+> não as seções 1–19 abaixo** (que documentam o histórico de ajuste dos widgets
+> e continuam válidas como referência de decisões passadas, mas não são mais o
+> próximo passo). A próxima etapa é a **Etapa 3 — casca de navegação**, que é a
+> primeira a tocar em UI real (`MainActivity`) — antes dela, rodar o checklist
+> manual de fumaça dos widgets (`docs/widget-smoke-test.md`). Etapas 0–1 na
+> seção 20; Etapa 2 na seção 21.
+>
 > Nota de sessão (2026-07-25): além da redução do widget para uma linha
 > (sessão anterior), foi adicionado o **gráfico semanal de calorias** no widget
 > quando ele é aumentado verticalmente. Detalhes na seção 13.
@@ -116,30 +128,67 @@ Corrigir o widget que ocupava duas linhas de altura no launcher apesar de o cont
 
 ## 9. O que ainda falta implementar
 
-Não há implementação obrigatória pendente para o objetivo específico de reduzir o widget: a correção está aplicada, compilada e validada no emulador.
+**Superado pela seção 20 / `planning.md`.** O widget nutricional já ganhou
+responsividade de altura (seção 16) e o widget de peso já existe (seção 15),
+então boa parte da lista original abaixo já está feita. A lista de pendências
+ativa agora é a das Etapas 2–11 do `planning.md` (§8–9 desse arquivo) — ver
+seção 20 para o estado exato de onde parar.
+
+<details>
+<summary>Lista original desta seção (histórico, majoritariamente resolvido)</summary>
 
 Trabalhos futuros recomendados, somente com autorização:
 
-- tornar o widget nutricional responsivo também à altura disponível: manter a versão mínima de uma linha já validada e, quando o usuário aumentar o widget verticalmente, preencher o espaço adicional com mais informações úteis em vez de deixar uma grande área vazia;
-- definir quais dados adicionais devem aparecer em cada faixa de altura antes de implementar. Essa seleção ainda não foi especificada pelo usuário e não deve ser inventada pelo próximo agente;
-- criar futuramente um segundo widget dedicado a peso. Esse novo widget está previsto, mas seu conteúdo, fonte dos dados, ações, tamanhos e design ainda precisam ser definidos com o usuário;
+- tornar o widget nutricional responsivo também à altura disponível — feito, seção 16;
+- criar futuramente um segundo widget dedicado a peso — feito, seção 15;
 - atualizar a seção `7.1` do `README.md` para refletir a altura de uma célula;
 - validar o widget em outros launchers/dispositivos, tema escuro e escalas de fonte maiores;
 - validar visualmente os estados sem dados/conexão e a variante `COMPACT` na altura mínima;
 - considerar testes instrumentados ou snapshots para os tamanhos do widget, se a infraestrutura do projeto passar a suportá-los.
 
+</details>
+
 ## 10. Próximos passos em ordem de prioridade
 
-1. Tornar o widget nutricional adaptável a alturas maiores, preservando o layout compacto de uma linha e usando o espaço vertical extra para exibir mais dados. Antes de programar, confirmar com o usuário quais informações adicionais terão prioridade.
-2. Planejar um novo widget de peso separado do widget nutricional. Levantar com o usuário quais dados ele deve mostrar, de onde virão, quais tamanhos deve suportar e o que acontece ao tocar nele.
-3. Confirmar o comportamento atual do widget nutricional em uma instância de uma linha no dispositivo/launcher alvo antes de alterar sua responsividade.
-4. Se houver corte em outro launcher ou com fonte ampliada, ajustar apenas padding, gaps ou tipografia em `NutritionWidget.kt`, preservando `targetCellHeight="1"` e os limites de `40dp` para a variante mínima.
-5. Atualizar o trecho desatualizado do `README.md` quando a documentação adicional for autorizada.
-6. Executar novamente `testDebugUnitTest assembleDebug` com o JBR do Android Studio e validar visualmente cada tamanho após qualquer alteração.
+**A fonte da verdade agora é `planning.md` §8–9** (ordem de etapas + detalhe de
+cada uma). Resumo de onde estamos e o que vem a seguir:
+
+1. **Executar o checklist manual da Etapa 0** (`docs/widget-smoke-test.md`,
+   itens 1–12) num dispositivo/emulador real — não foi possível nesta sessão
+   por falta de ambiente. Bloqueia formalmente o avanço para qualquer etapa
+   que toque em UI (Etapa 3+), embora a Etapa 2 (design system) possa
+   prosseguir em paralelo por não mexer em runtime.
+2. **Etapa 2 — Design system**: tokens de cor/tipografia do deck "Nutri
+   Insights" + componentes base em `ui/design/` (`StatCard`, `MetricValue`,
+   `SyncStatusChip`, etc.). Não toca em `WidgetColors.kt` nem em lógica —
+   ver planning.md §9 Etapa 2 para a paleta exata e as regras.
+3. **Etapa 3 — Casca de navegação**: `AppShell` com 5 abas + placeholder,
+   atrás da flag `USE_LEGACY_UI`. **Ponto de maior risco para os widgets** —
+   ler planning.md §1.2 e §6 antes de tocar em `MainActivity.kt`.
+4. Etapas 4–9 (telas) e 10–11 (estados / remoção do legado) na ordem descrita
+   em planning.md §8.
+
+Ao final de CADA etapa: `./gradlew :app:testDebugUnitTest :app:assembleDebug`
++ o checklist de `docs/widget-smoke-test.md` (o ciclo completo, itens 9–12, é
+obrigatório nas Etapas 3, 5 e 11).
 
 ## 11. Instrução exata para o próximo agente começar
 
-> Leia `handoff.md`, depois abra `app/src/main/res/xml/nutrition_widget_info.xml` e `app/src/main/java/com/example/widgetfatsecret/fatsecret/widget/NutritionWidget.kt`. Confirme que o provider continua com `minHeight/minResizeHeight=40dp`, `targetCellHeight=1` e que `COMPACT`/`MEDIUM` usam altura de `40.dp`. A próxima frente prioritária é manter essa versão mínima e criar variantes que aproveitem alturas maiores com mais dados; pergunte ao usuário quais dados adicionais devem aparecer antes de definir o layout. Em seguida, há um novo widget de peso planejado, cujo escopo ainda deve ser levantado. Não implemente nem reverta nada antes de entender a nova solicitação e sempre valide visualmente cada tamanho no dispositivo alvo.
+> Leia `planning.md` inteiro primeiro (é o plano vigente), depois a seção 20
+> deste `handoff.md` para o estado exato desta sessão. As Etapas 0 e 1 do
+> plano já estão implementadas: existe uma tag `baseline-widgets` no commit
+> inicial, `docs/widget-smoke-test.md` com o checklist, e uma camada de
+> histórico nova em `fatsecret/data/history/` + `fatsecret/domain/history/`
+> (sem UI, sem chamador de `HistoryRepository.refresh()` ainda — isso é
+> esperado). Rode `git status`/`git log` para confirmar que nada mudou desde
+> então. **Antes de escrever qualquer código de UI**, confirme que o checklist
+> manual de `docs/widget-smoke-test.md` foi executado num dispositivo/emulador
+> — se a linha "Etapa 0" na tabela de registro do doc ainda disser "pendente",
+> rode-o primeiro. Depois disso, siga para a Etapa 2 (design system) do
+> `planning.md` §9, que não tem essa dependência. Não toque em
+> `MainActivity.kt`, nos dois widgets, nos DataStores existentes ou em
+> `AppContainer.syncAndRefresh()` sem reler planning.md §1.2 e §10 (contratos e
+> riscos) primeiro.
 
 ## 12. O que não deve ser alterado ou refeito sem necessidade
 
@@ -753,3 +802,202 @@ No emulador, com 128,5 kg informado: **Total −24,1 kg**, barra ~53 %,
   outra conta, precisa reajustar.
 - ~~`README.md` seção 4 não documentava a limitação do peso inicial~~ —
   documentado nesta sessão (subseção "O **peso inicial** tem a mesma limitação").
+
+## 20. Sessão 2026-07-25 (8ª parte) — início da evolução para "Nutri Insights" (planning.md, Etapas 0–1)
+
+### Contexto
+
+Existia já um `planning.md` na raiz descrevendo uma evolução grande do app —
+de "app de widgets + uma tela" para "Nutri Insights", um app com navegação por
+5 abas (Hoje/Tendências/Padrões/Consistência/Peso) + Metas e conta, mantendo os
+dois widgets **totalmente intocados**. O plano tem 12 etapas (§8–9 do
+`planning.md`); esta sessão implementou as duas primeiras, que são
+deliberadamente "preparação de terreno": nenhuma delas tem UI nova nem altera
+o comportamento visível do app ou dos widgets.
+
+### O que foi feito
+
+**Etapa 0 — Rede de segurança:**
+- O commit inicial e o `.gitignore` já existiam e já estavam corretos
+  (`local.properties`, `build/`, `.idea/*` ignorados) — nada a corrigir aí.
+- Criado [`docs/widget-smoke-test.md`](docs/widget-smoke-test.md): o checklist
+  de fumaça dos 12 itens que já vivia dentro do `planning.md` §11, extraído
+  para um documento próprio com uma tabela de registro de execuções.
+- Criada a tag anotada `baseline-widgets` no commit inicial (`5f744e5`).
+- **Pendência real:** o checklist MANUAL (itens 1–12) não foi executado — este
+  ambiente de sessão não tem dispositivo/emulador Android conectado. Só o
+  checklist automatizado (`testDebugUnitTest` + `assembleDebug`) rodou.
+
+**Etapa 1 — Camada de histórico (sem UI):**
+Objetivo: persistir uma série diária (calorias + macros por dia) para
+alimentar as futuras telas Tendências/Padrões/Consistência, sem tocar em nada
+que os widgets já leem.
+
+- [`fatsecret/data/history/NutritionHistoryStore.kt`](app/src/main/java/com/example/widgetfatsecret/fatsecret/data/history/NutritionHistoryStore.kt) —
+  DataStore novo (`nutrition_history`, arquivo próprio, independente de
+  `nutrition_cache`), CSV compacto `dateInt:cal:protein:carbs:fat` no mesmo
+  padrão de `WeightCacheStore`. `merge()` faz upsert por `dateInt` e nunca
+  apaga dias já persistidos que não vieram na leva atual; bounded a 400 dias.
+- [`fatsecret/data/history/HistoryRepository.kt`](app/src/main/java/com/example/widgetfatsecret/fatsecret/data/history/HistoryRepository.kt) —
+  lado de leitura (`trend`/`pattern`/`consistency`, Flows derivados de
+  `daysFlow`) e o único lado de escrita (`refresh()`, busca via
+  `foodClient.getMonth` — 1 request por mês, ver risco R6 do planning.md).
+  **`refresh()` não tem nenhum chamador ainda** — é intencional, nenhuma tela
+  ou worker deve acioná-lo antes de existir uma tela que precise dele.
+- Três calculadores puros (sem Android, 100% testáveis em JVM) em
+  [`fatsecret/domain/history/`](app/src/main/java/com/example/widgetfatsecret/fatsecret/domain/history/):
+  - `TrendCalculator` — média num período, média do período anterior,
+    variação, e a lista dia-a-dia com `null` explícito nos dias sem registro
+    (nunca zero — regra do deck, planning.md §0).
+  - `PatternCalculator` — média de calorias agrupada por dia da semana.
+  - `ConsistencyCalculator` — tem DUAS assinaturas: uma janela rolante
+    (`windowDays` terminando em `today`) e uma janela explícita
+    (`windowStart`/`windowEnd`). **A janela explícita existe porque a rolante
+    nunca produz o estado `FUTURE`** (o range sempre termina em `today`, então
+    nenhum dia é `> today`) — só faz sentido para o futuro calendário mensal
+    (Etapa 8), que vai mostrar o mês inteiro incluindo dias que ainda não
+    aconteceram. Isso foi descoberto por um teste que falhava (ver "Testes"
+    abaixo) — vale a pena ler o comentário no arquivo antes de usar essa
+    classe na Etapa 8.
+- `AppContainer` ganhou `historyStore` + `historyRepository`. **Nada mais em
+  `AppContainer` mudou** — `syncAndRefresh()`, a ordem
+  fetch→persist→updateAll dos dois widgets, e o único ponto de sync
+  continuam exatamente como estavam.
+
+### Por que isso é "preparar o terreno"
+
+Nenhum arquivo em `fatsecret/widget`, `fatsecret/work`, `fatsecret/oauth`, ou
+os stores/DataStores existentes (`NutritionCacheStore`, `WeightCacheStore`,
+`GoalsStore`, `TokenStore`) foi tocado. `AppContainer.syncAndRefresh()`
+continua sendo o único ponto de sync dos widgets. A única mudança de
+comportamento em runtime é: mais duas chaves de `AppContainer` existem (mas
+nada as chama ainda). Etapas 4/6/7/8 (telas que consomem histórico) poderão
+simplesmente ler `container.historyRepository` sem precisar desenhar a
+camada de dados do zero.
+
+### Testes e validação
+
+- 15 testes novos: `TrendCalculatorTest` (4), `PatternCalculatorTest` (3),
+  `ConsistencyCalculatorTest` (4 — um deles pegou o bug de design do
+  `ConsistencyCalculator` descrito acima, forçando a segunda assinatura).
+- `./gradlew :app:testDebugUnitTest` → **68 testes, 0 falhas** (53 antigos +
+  15 novos).
+- `./gradlew :app:assembleDebug` → **BUILD SUCCESSFUL**.
+- `grep -rn "import com.example.widgetfatsecret.ui" app/src/main/java/.../fatsecret/`
+  → vazio, confirma a regra de ouro do planning.md §5 (nada em `fatsecret/`
+  importa `ui/`).
+- **Não validado nesta sessão** (sem dispositivo): nenhuma verificação visual
+  dos widgets. Como nenhum arquivo de widget foi tocado, o risco é baixo, mas
+  o checklist manual de `docs/widget-smoke-test.md` continua formalmente
+  pendente — ver seção 9/10/11 acima.
+
+### Arquivos criados/alterados
+
+Criados: `docs/widget-smoke-test.md`,
+`fatsecret/data/history/NutritionHistoryStore.kt`,
+`fatsecret/data/history/HistoryRepository.kt`,
+`fatsecret/domain/history/TrendCalculator.kt`,
+`fatsecret/domain/history/PatternCalculator.kt`,
+`fatsecret/domain/history/ConsistencyCalculator.kt`,
+`test/TrendCalculatorTest.kt`, `test/PatternCalculatorTest.kt`,
+`test/ConsistencyCalculatorTest.kt`.
+Alterados: `AppContainer.kt` (só adições — `historyStore`, `historyRepository`),
+`planning.md` (status das Etapas 0 e 1 marcado, ver topo do arquivo),
+`handoff.md` (esta seção + seções 1/9/10/11 apontadas para o novo fluxo).
+
+Tag criada: `baseline-widgets` (no commit `5f744e5`).
+
+### Pendências desta sessão
+
+- Checklist manual da Etapa 0 (dispositivo/emulador) — ver seção 10.
+- `HistoryRepository.refresh()` não é chamado por ninguém ainda — correto por
+  ora, mas quem implementar a Etapa 4/6/7/8 precisa decidir de onde disparar
+  o refresh (nunca do `init{}` de uma tela — ver risco R6/R5 do planning.md).
+- Nada foi commitado nesta sessão — as mudanças estão no working tree,
+  aguardando revisão/commit explícito do usuário.
+
+---
+
+## 21. Sessão 2026-07-25 (9ª parte) — Etapa 2 do planning.md: design system
+
+### Contexto
+
+Continuação direta da seção 20. As Etapas 0 (rede de segurança) e 1 (camada de
+histórico, sem UI) já estavam feitas. Esta sessão implementou a **Etapa 2 —
+design system**: tokens de cor, tipografia e componentes base do deck "Nutri
+Insights", **sem lógica de tela e sem tocar nos widgets**. É a última etapa antes
+da UI real (Etapa 3 mexe em `MainActivity`).
+
+### O que foi feito
+
+**Tema reescrito (`ui/theme/`):**
+- `Color.kt` — tokens do protótipo (`Nutri Insights.dc.html`), escuro e claro:
+  `bg #0A0F1A`, `surf #131B2B`, `surf2 #1B2539`, 3 níveis de texto
+  (`#E9EFF8/#93A3BD/#64748F`), 5 acentos (mint `#84E0A8`, cyan `#5FC8E8`, amber
+  `#E5B15C`, coral `#F0806F`, violet `#9E9BF0`) + `page`. Linhas (`line`/`line2`)
+  não vêm com hex no deck — derivadas da superfície para contorno sutil/visível.
+- `Theme.kt` — `NutriColors` (data class `@Immutable`) carrega a paleta estendida
+  que o `ColorScheme` do Material não comporta, exposta por
+  `MaterialTheme.nutriColors` via `staticCompositionLocalOf`. A camada Material3
+  (primary=mint, error=coral, surface/background/…) é derivada dos tokens.
+  **Dynamic color desligado** — o Material You (wallpaper) atropelaria a paleta do
+  deck. O nome `WidgetFatSecretTheme` foi preservado (MainActivity já o chama).
+- `Type.kt` — Manrope (UI) + IBM Plex Mono (números/metadados) pedidos pelo deck,
+  hoje via **fallback do sistema** (`SansSerif`/`Monospace`) porque `res/font/`
+  ainda não empacota os `.ttf` (caminho previsto em planning §3). `Typography`
+  completo + `MonoText.metricLarge/metricMedium/meta` (fora do Material porque
+  número mono não mapeia nos papéis 1:1). Trocar as duas famílias no futuro não
+  mexe em nenhum call-site.
+
+**Componentes novos (`ui/design/`):** `Tokens.kt` (raios 22/13/12dp,
+espaçamentos), `StatCard`, `MetricValue` (mono, `tabular-nums`, `null` → "—"
+nunca "0"), `MetaChip`, `SyncStatusChip` (+ enum `SyncStatus` — o mapeamento a
+partir do `NutritionSnapshot` fica na camada de ViewModel, **não** no design
+system, para não acoplar `ui/design` a modelos de dados), `GoalRing` (anel via
+Canvas com número central), `BarChart` (+ `BarDatum`; dia ausente vira contorno
+tracejado, **fora de qualquer média** — regra do deck; linha de meta tracejada),
+`EmptyState` (linguagem descritiva, sem cobrança), `SkeletonBlock` (pulsação;
+deve usar a altura do conteúdo final para não deslocar layout), e
+`NutriPrimaryButton`/`NutriSecondaryButton` (tokens de botão do deck: mint
+preenchido / outline coral). Cada arquivo traz previews `@Preview` em claro **e**
+escuro.
+
+### Decisões e sutilezas
+
+- **Todo estado carrega rótulo textual, nunca só cor** (regra do slide 4):
+  `SyncStatusChip` e `MetaChip` sempre têm texto; a cor é reforço.
+- **`SyncStatus` é enum próprio do design system**, não importa
+  `NutritionSnapshot` — mantém a regra de ouro (`ui/design` → nada de
+  `fatsecret`). Quem for ligar na Etapa 3+ mapeia snapshot→status no ViewModel.
+- `Alignment.LastBaseline` não existe para `Row` (só `Top/Center/Bottom`) — foi
+  o único erro de compilação, trocado por `Alignment.Bottom` em `MetricValue`.
+
+### Testes e validação
+
+`:app:assembleDebug` **verde** (compila a UI antiga + o novo design system);
+`:app:testDebugUnitTest` **68 testes verdes** (inalterados — o design system é
+validado por preview Compose, não por teste JVM; é o que a Etapa 2 do planning
+pede). Regra de ouro reverificada: **0 imports de `ui.*` em `fatsecret/`**.
+`widget/WidgetColors.kt` **não foi tocado** (risco R7).
+
+### Arquivos criados/alterados
+
+Criados: `ui/design/Tokens.kt`, `StatCard.kt`, `MetricValue.kt`, `MetaChip.kt`,
+`SyncStatusChip.kt`, `GoalRing.kt`, `BarChart.kt`, `EmptyState.kt`,
+`SkeletonBlock.kt`, `NutriButtons.kt`.
+Reescritos: `ui/theme/Color.kt`, `Theme.kt`, `Type.kt`.
+Atualizados: `planning.md` (Etapa 2 marcada ✅ + "Status real"), `handoff.md`
+(esta seção + nota de topo).
+
+### Pendências desta sessão
+
+- **Conferência visual dos previews** (claro/escuro, contraste ≥ 4,5:1) depende
+  de Android Studio/dispositivo — não há render de preview neste ambiente. Os hex
+  seguem o protótipo, mas a validação visual final fica para quando houver IDE.
+- **Checklist manual de fumaça dos widgets** (`docs/widget-smoke-test.md`) segue
+  pendente da Etapa 0 e **deve rodar antes da Etapa 3**, que é a primeira a tocar
+  em `MainActivity`.
+- Nada foi commitado — mudanças no working tree, aguardando revisão do usuário.
+- **Próximo passo:** Etapa 3 (casca de navegação: `AppShell` + `NavHost` de 6
+  rotas + `navigation-compose`), mantendo `MainActivity`/manifesto/`onNewIntent`
+  intocados e a UI antiga atrás da flag `USE_LEGACY_UI`.

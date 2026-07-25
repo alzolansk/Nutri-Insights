@@ -1,6 +1,8 @@
 package com.example.widgetfatsecret.fatsecret.data
 
 import android.content.Context
+import com.example.widgetfatsecret.fatsecret.data.history.HistoryRepository
+import com.example.widgetfatsecret.fatsecret.data.history.NutritionHistoryStore
 import com.example.widgetfatsecret.fatsecret.data.remote.FatSecretAuthClient
 import com.example.widgetfatsecret.fatsecret.data.remote.FatSecretConfig
 import com.example.widgetfatsecret.fatsecret.data.remote.FatSecretFoodClient
@@ -43,6 +45,7 @@ class AppContainer private constructor(context: Context) {
     val goalsStore = GoalsStore(context)
     val cacheStore = NutritionCacheStore(context)
     val weightCacheStore = WeightCacheStore(context)
+    val historyStore = NutritionHistoryStore(context)
 
     // Plain client for the OAuth handshake legs (signed manually).
     private val authHttp = OkHttpClient.Builder()
@@ -92,6 +95,17 @@ class AppContainer private constructor(context: Context) {
         goalsStore = goalsStore,
         cacheStore = cacheStore,
         weightCacheStore = weightCacheStore,
+    )
+
+    /**
+     * Trends/Padrões/Consistência data source (Etapa 1). Independent of
+     * [repository]/[syncAndRefresh] on purpose: its `refresh()` costs extra
+     * quota (see risco R6 in planning.md) and must stay opt-in, never folded
+     * into the widgets' sync path.
+     */
+    val historyRepository = HistoryRepository(
+        foodClient = foodClient,
+        store = historyStore,
     )
 
     /**

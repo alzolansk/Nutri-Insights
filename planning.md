@@ -1,6 +1,7 @@
 # Plano de Evolução — WidgetFatSecret → Nutri Insights
 
-> **Status:** planejamento apenas. Nenhum código foi alterado. Aguardando aprovação.
+> **Status:** Etapas 0, 1 e 2 implementadas (ver §9). Etapas 3–11 seguem apenas
+> planejadas, aguardando aprovação para prosseguir.
 > **Premissa central:** os widgets de tela inicial são o que já funciona hoje e são
 > intocáveis. Toda a evolução é **aditiva** — nada da infraestrutura atual é removido
 > antes de existir paridade verificada.
@@ -31,11 +32,25 @@ tipografia Manrope + IBM Plex Mono para metadados, e um escopo negativo explíci
 (sem TDEE, sem correlação peso×calorias, sem score, sem classificação de alimentos,
 dias ausentes nunca viram zero).
 
-> Nota: o projeto do Claude Design (`71f2d226-…`) não aparece na lista de projetos
-> graváveis desta conta (`DesignSync.list_projects` retorna apenas *WYWatch Design
-> System* e *Design System*), então o design foi lido do deck local em `assets/`.
-> Se o import via MCP for necessário, é preciso confirmar o acesso/permissão do
-> projeto — não é bloqueante para este plano.
+> Atualização: o projeto do Claude Design **"Protótipo de aplicativo Android"**
+> (`71f2d226-7e36-4fab-b0ef-aee906d73cbc`) está acessível e contém o protótipo
+> interativo completo — `Nutri Insights.dc.html` (as 8 telas/overlays, com HTML/CSS
+> real) e `Nutri Insights Deck.dc.html` (as 12 slides do deck). Os tokens de cor,
+> tipografia e o mapa de telas descritos abaixo já refletem o protótipo, não só o
+> deck estático.
+>
+> **Achado importante — não existe tela de login no protótipo.** Nem o protótipo
+> interativo nem o deck de 12 slides têm uma tela de "conectar conta"/OAuth/login.
+> A única superfície relacionada a conta é o card **"Conta FatSecret"** dentro do
+> overlay *Metas e conta*, e ele assume estado **já conectado** (status "Conectado",
+> e-mail, meta de peso, última sincronização, botões "Sincronizar" e "Desconectar").
+> Não há botão "Conectar conta", nem tela de consentimento OAuth, nem estado vazio
+> "desconectado" desenhado. **Implicação para a Etapa 5:** o fluxo de conectar pela
+> primeira vez (`beginConnect` → navegador → deep link → `completeConnect`) e o
+> estado "desconectado" do card de conta não têm design de referência — terão que
+> ser desenhados ad-hoc, reaproveitando os tokens do design system (cores, tipografia,
+> raios de 22px/13px, botão mint preenchido / outline coral), e não copiados do
+> protótipo porque essa tela não existe nele.
 
 ---
 
@@ -260,7 +275,7 @@ Etapa 11 Remoção do legado
 
 ## 9. Etapas detalhadas
 
-### Etapa 0 — Rede de segurança e linha de base
+### Etapa 0 — Rede de segurança e linha de base ✅ concluída (2026-07-25)
 
 - **Objetivo:** garantir rollback e registrar o comportamento atual dos widgets
   antes de qualquer linha nova. **O repositório não tem nenhum commit** — sem isso
@@ -275,10 +290,16 @@ Etapa 11 Remoção do legado
 - **Build e testes:** `./gradlew :app:testDebugUnitTest` (6 classes verdes) e
   `./gradlew :app:assembleDebug`. Instalar, adicionar os dois widgets em ambos os
   tamanhos, conectar a conta, sincronizar, alternar tema claro/escuro.
+- **Status real:** o commit inicial já existia (`5f744e5`); `.gitignore` já
+  cobria `local.properties`/`build/`/`.idea` corretamente. Criado
+  [`docs/widget-smoke-test.md`](docs/widget-smoke-test.md) e a tag
+  `baseline-widgets`. **Pendência:** o checklist manual (itens 1–12 do doc) não
+  foi executado nesta sessão — não há dispositivo/emulador disponível neste
+  ambiente. Rodar antes de avançar para uma etapa que toque em UI (Etapa 3+).
 
 ---
 
-### Etapa 1 — Camada de histórico (sem UI)
+### Etapa 1 — Camada de histórico (sem UI) ✅ concluída (2026-07-25)
 
 - **Objetivo:** persistir a série diária (data, kcal, proteína, carbo, gordura) e
   expor Flows agregados, **sem tocar em `NutritionCacheStore`**.
@@ -302,13 +323,39 @@ Etapa 11 Remoção do legado
 - **Build e testes:** `:app:testDebugUnitTest` (novos testes + os 6 existentes),
   `:app:assembleDebug`. Checklist de widgets completo — esta etapa mexe no
   `AppContainer`, que é compartilhado.
+- **Status real:** implementado como planejado —
+  [`NutritionHistoryStore`](app/src/main/java/com/example/widgetfatsecret/fatsecret/data/history/NutritionHistoryStore.kt)
+  (DataStore `nutrition_history`, CSV `dateInt:cal:protein:carbs:fat`, bounded a
+  400 dias),
+  [`HistoryRepository`](app/src/main/java/com/example/widgetfatsecret/fatsecret/data/history/HistoryRepository.kt),
+  e os três calculadores puros em
+  [`fatsecret/domain/history/`](app/src/main/java/com/example/widgetfatsecret/fatsecret/domain/history/)
+  (`TrendCalculator`, `PatternCalculator`, `ConsistencyCalculator`).
+  `AppContainer` expõe `historyRepository`; `FatSecretRepository.sync()` e
+  `syncAndRefresh()` não foram tocados. 15 novos testes JVM cobrindo janela
+  vazia/parcial, comparação com período anterior, "dados insuficientes" (< 4
+  dias), agrupamento por dia da semana, sequências com lacunas e um caso de
+  virada de mês (68 testes no total, todos verdes). `HistoryRepository.refresh()`
+  ainda não tem chamador — nenhuma tela ou worker aciona sync de histórico
+  automaticamente, por design (ver risco R6).
 
 ---
 
-### Etapa 2 — Design system
+### Etapa 2 — Design system ✅ concluída (2026-07-25)
 
 - **Objetivo:** tokens de cor, tipografia e componentes base do deck, prontos para
   as telas.
+- **Tokens confirmados no protótipo** (`Nutri Insights.dc.html`, não só no deck):
+  - Escuro: `bg #0A0F1A` · `surf #131B2B` · `surf2 #1B2539` · `tx #E9EFF8` ·
+    `tx2 #93A3BD` · `tx3 #64748F` · `mint #84E0A8` · `cyan #5FC8E8` · `amber #E5B15C` ·
+    `coral #F0806F` · `violet #9E9BF0` · `page #070B13`.
+  - Claro: `bg #F4F7FB` · `surf #FFFFFF` · `tx #0D1626` · `mint #0F8F62` ·
+    `cyan #1B7EA6` · `amber #A6740F` · `coral #CE4F44` · `violet #5E5AC0`.
+  - Fontes: Manrope (400–800) para UI, IBM Plex Mono (400/500) para metadados/números
+    (sempre `tabular-nums`).
+  - Botão primário: `background: mint; color: bg; font: 700 12.5px Manrope`.
+    Botão secundário/destrutivo: `background: transparent; border: 1px solid line2;
+    color: coral`. Raios: cartão 22px, botão 13px, botão icon 12px.
 - **Arquivos afetados:** `ui/theme/Color.kt`, `Theme.kt`, `Type.kt` (reescritos);
   *novos* `ui/design/` — `StatCard`, `MetricValue` (tabular-nums), `MetaChip`
   (monoespaçada), `SyncStatusChip`, `GoalRing`, `BarChart`, `EmptyState`,
@@ -322,10 +369,36 @@ Etapa 11 Remoção do legado
   cor (todo estado carrega rótulo + percentual, conforme slide 4).
 - **Build e testes:** `:app:assembleDebug`. Widgets: verificação visual rápida
   (não devem mudar em nada — se mudarem, algo do tema vazou).
-
----
-
-### Etapa 3 — Casca de navegação
+- **Status real:** implementado.
+  [`ui/theme/Color.kt`](app/src/main/java/com/example/widgetfatsecret/ui/theme/Color.kt),
+  [`Theme.kt`](app/src/main/java/com/example/widgetfatsecret/ui/theme/Theme.kt) e
+  [`Type.kt`](app/src/main/java/com/example/widgetfatsecret/ui/theme/Type.kt)
+  reescritos com os tokens do deck. A camada Material3 é derivada dos tokens; a
+  paleta estendida (mint/cyan/amber/coral/violet + 3 níveis de texto/linha) vive
+  em `NutriColors`, acessível por `MaterialTheme.nutriColors` via um
+  `staticCompositionLocalOf`. **Dynamic color foi desligado** (`WidgetFatSecretTheme`
+  não recebe mais `dynamicColor`/`LocalContext`) — o Material You atropelaria a
+  paleta do deck; isso é o comportamento correto para a Etapa 2 e não afeta os
+  widgets. Fontes: fallback do sistema (`SansSerif`/`Monospace`) com pesos
+  equivalentes a Manrope/IBM Plex Mono, já que `res/font/` ainda não empacota os
+  `.ttf` — caminho previsto em §3; trocar `UiFontFamily`/`MonoFontFamily` no
+  futuro não mexe em call-sites. Estilos monoespaçados (`MonoText.metricLarge/
+  metricMedium/meta`) ficam fora do `Typography` do Material porque não mapeiam
+  nos papéis 1:1. Novos componentes em
+  [`ui/design/`](app/src/main/java/com/example/widgetfatsecret/ui/design/):
+  `StatCard`, `MetricValue`, `MetaChip`, `SyncStatusChip` (+ enum `SyncStatus`,
+  mapeado do snapshot pela camada de ViewModel, não aqui), `GoalRing`,
+  `BarChart` (+ `BarDatum`, dia ausente = contorno tracejado, nunca zero),
+  `EmptyState`, `SkeletonBlock`, mais `NutriPrimaryButton`/`NutriSecondaryButton`
+  (tokens de botão do deck) e `Tokens.kt` (raios 22/13/12, espaçamentos). Cada
+  componente tem previews `@Preview` claro **e** escuro. **`widget/WidgetColors.kt`
+  não foi tocado** (risco R7). Regra de ouro verificada: 0 imports de `ui.*` em
+  `fatsecret/`. `:app:assembleDebug` e `:app:testDebugUnitTest` (68 testes,
+  inalterados — o design system é validado por preview, não por teste JVM) verdes.
+  **Pendência:** a verificação visual dos previews em claro/escuro (contraste
+  ≥ 4,5:1) depende do Android Studio/dispositivo — não há renderização de preview
+  neste ambiente; os tokens seguem os hex do protótipo, mas a conferência visual
+  final fica para quando houver IDE/dispositivo.
 
 - **Objetivo:** `AppShell` com 5 abas + rota de Metas/Conta, todas com placeholder.
 - **Arquivos afetados:** `MainActivity.kt` (só o corpo do `setContent`),
