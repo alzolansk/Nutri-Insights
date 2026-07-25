@@ -1,7 +1,7 @@
 # Plano de Evolução — WidgetFatSecret → Nutri Insights
 
-> **Status:** Etapas 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 e 10 implementadas (ver §9).
-> A Etapa 11 segue apenas planejada, aguardando aprovação para prosseguir.
+> **Status:** Etapas 0–11 implementadas (ver §9).
+> A migração planejada para o Nutri Insights está concluída.
 > **Premissa central:** os widgets de tela inicial são o que já funciona hoje e são
 > intocáveis. Toda a evolução é **aditiva** — nada da infraestrutura atual é removido
 > antes de existir paridade verificada.
@@ -784,7 +784,7 @@ manifesto, DataStore ou sincronização de infraestrutura foi alterado.
 
 ---
 
-### Etapa 11 — Remoção do legado
+### Etapa 11 — Remoção do legado ✅ concluída (2026-07-25)
 
 - **Objetivo:** apagar a UI antiga **somente** após paridade verificada.
 - **Arquivos afetados:** remover `ui/AppScreens.kt` e `ui/FatSecretViewModel.kt`;
@@ -797,6 +797,18 @@ manifesto, DataStore ou sincronização de infraestrutura foi alterado.
   pendente às classes removidas; README descreve o app novo.
 - **Build e testes:** `:app:testDebugUnitTest`, `:app:assembleDebug`,
   `:app:assembleRelease`, e o checklist completo de widgets uma última vez.
+
+**Status real:** `AppScreens.kt`, `FatSecretViewModel.kt`, `AppRoot` e a flag
+`USE_LEGACY_UI` foram removidos. `UiEvent` foi extraído para arquivo próprio para
+preservar o contrato usado pelo `AccountViewModel`; `MainActivity`, deep link
+OAuth, manifesto, widgets e DataStores ficaram intactos. README e handoff agora
+descrevem somente o Nutri Insights. Os 92 testes JVM, os builds debug/release e
+o lint passaram. No `emulator-5554`, o APK foi instalado preservando dados, Hoje,
+Peso e Metas/Conta foram inspecionados, Back foi verificado, ambos os providers
+continuaram registrados e o widget de peso abriu o app. Os itens destrutivos ou
+físicos do checklist completo (desconectar/reconectar, fechar durante sync,
+reiniciar, redimensionar e conferir todas as variantes dos dois widgets) seguem
+registrados como validação manual pendente; não foram declarados executados.
 
 ---
 

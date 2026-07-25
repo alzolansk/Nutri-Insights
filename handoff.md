@@ -2,6 +2,14 @@
 
 Atualizado em: 2026-07-25
 
+> **Nota de sessão (2026-07-25, 18ª parte) — LEIA PRIMEIRO:** a **Etapa 11 —
+> Remoção do legado** foi implementada. `AppScreens.kt`, `FatSecretViewModel.kt`,
+> `AppRoot` e `USE_LEGACY_UI` saíram; `MainActivity` agora hospeda somente o
+> `AppShell`, preservando callback OAuth, manifesto e os contratos dos widgets.
+> Testes, debug, release e lint passaram. A migração 0–11 está concluída; a parte
+> destrutiva/física do checklist manual final continua explicitamente pendente.
+> Detalhes na seção 30.
+>
 > **Nota de sessão (2026-07-25, 17ª parte) — LEIA PRIMEIRO:** a **Etapa 10 —
 > Estados** do `planning.md` foi implementada. As cinco abas agora compartilham
 > o mesmo contrato para sincronizado, sem registros, não sincronizado, falha de
@@ -1812,3 +1820,81 @@ informação textual além de cor e linguagem descritiva.
 Etapa 11 — Remoção do legado, ainda não implementada. Não avançar sem nova
 autorização e, antes de remover a flag, executar a validação completa exigida no
 `planning.md`.
+
+## 30. Sessão 2026-07-25 (18ª parte) — Etapa 11: remoção do legado
+
+### Objetivo e escopo
+
+Foi implementada somente a **Etapa 11** do `planning.md`, considerando as Etapas
+0–10 concluídas. Esta etapa não cria nova superfície visual: ela aposenta a UI
+Compose anterior depois da paridade funcional já entregue pelas cinco abas e por
+Metas e conta. O design vigente continua sendo `assets/design.md`.
+
+### Remoção controlada
+
+- `ui/AppScreens.kt` e `ui/FatSecretViewModel.kt` foram removidos.
+- `MainActivity.kt` não contém mais `AppRoot` nem `USE_LEGACY_UI`; ela instancia
+  uma única vez o `AccountViewModel`, mantém `OAuthCallbackAndEventEffects` e abre
+  diretamente o `AppShell`.
+- O contrato `UiEvent`, já usado pela UI nova, foi movido sem alteração funcional
+  para `ui/UiEvent.kt`, pois antes estava acidentalmente hospedado no arquivo do
+  ViewModel legado.
+- Comentários em `AccountViewModel`, `TodayViewModel` e `GoalsAccountScreen` foram
+  atualizados para não apontar para símbolos removidos. A busca em `app/src/main`
+  não encontra `FatSecretViewModel`, `MainScreen`, `GoalsSettingsScreen`,
+  `USE_LEGACY_UI` nem `AppRoot`.
+
+### Contratos preservados
+
+- `MainActivity` conserva nome, pacote, `onNewIntent`, `callbackUri`,
+  `enableEdgeToEdge()` e tratamento do deep link OAuth.
+- `AndroidManifest.xml` continua com `exported="true"`, `launchMode="singleTask"`
+  e o intent-filter `VIEW` existente.
+- Nenhum arquivo em `fatsecret/`, nenhum receiver/widget, DataStore,
+  `AppContainer.syncAndRefresh()` ou XML de provider foi alterado.
+- A regra de dependência foi reverificada: não há import de `ui.*` dentro de
+  `fatsecret/`. `NutritionWidget` e `WeightWidget` ainda referenciam exatamente
+  `com.example.widgetfatsecret.MainActivity`.
+
+### Documentação
+
+- `README.md` agora descreve o Nutri Insights com Hoje, Tendências, Padrões,
+  Consistência, Peso e Metas e conta; a seção de arquitetura documenta a navegação,
+  os ViewModels, o histórico dedicado e o ponto único de sync.
+- A seção 7.1 documenta os dois widgets e o caminho atual de comparação/ajustes no
+  app, sem referências operacionais à tela legada.
+
+### Testes, builds e validação no emulador
+
+- `:app:testDebugUnitTest` → **92 testes JVM, 0 falhas**.
+- `:app:assembleDebug` → **BUILD SUCCESSFUL**.
+- `:app:assembleRelease` → **BUILD SUCCESSFUL**; gerado
+  `app-release-unsigned.apk`. A primeira tentativa encontrou lock em
+  `app/build/tmp/kotlin-classes/release`, herdado de uma execução que excedeu o
+  timeout; `gradlew --stop` + `clean` liberou o diretório e a recompilação passou.
+- `:app:lintDebug` → **BUILD SUCCESSFUL**.
+- O APK debug foi instalado com `adb install -r` no `emulator-5554`, preservando
+  dados. Hoje abriu com `970 / 1.000 kcal`; Peso mostrou `104,4 kg`, delta
+  `−0,5 kg`, média `−1,0 kg/sem`, total `−24,1 kg`, meta `83,0 kg` e restante
+  `21,4 kg`, iguais aos números vistos no widget de peso.
+- Metas e conta abriu em estado conectado; Back retornou à aba Peso. Não houve
+  `FATAL EXCEPTION`. Os providers `NutritionWidgetReceiver` e
+  `WeightWidgetReceiver` permaneceram registrados e com `RemoteViews`; tocar no
+  widget de peso abriu `MainActivity`.
+
+### Validação manual ainda pendente
+
+O checklist completo de `docs/widget-smoke-test.md` não foi declarado concluído.
+Não foram executados nesta sessão: redimensionar fisicamente todas as variantes
+dos dois widgets; comparar visualmente o widget nutricional no launcher; alterar
+e restaurar uma meta; alternar tema e modo avião; desconectar/reconectar via OAuth;
+fechar o app durante sync; reiniciar o emulador. Em especial, o ciclo OAuth não
+foi disparado automaticamente para não apagar a autorização pessoal persistida
+sem garantia de que a etapa interativa no navegador pudesse ser concluída.
+
+### Estado final
+
+A implementação e a documentação da Etapa 11 estão concluídas, sem legado
+executável ou referência pendente no source set principal. A migração 0–11 do
+`planning.md` terminou. Resta somente a execução humana do checklist final acima,
+que deve ser registrada em `docs/widget-smoke-test.md` quando realizada.

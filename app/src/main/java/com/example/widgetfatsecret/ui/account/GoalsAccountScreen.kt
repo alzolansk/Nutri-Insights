@@ -67,8 +67,8 @@ fun GoalsAccountRoute(viewModel: AccountViewModel, modifier: Modifier = Modifier
 
 /**
  * "Metas e conta": conectar/desconectar, sincronização manual, metas diárias e
- * peso inicial — a migração literal de `GoalsSettingsScreen` + as ações de
- * conta de `MainScreen` (planning.md §9, Etapa 5). Não existe design de
+ * peso inicial — regras preservadas da interface original mais as ações de
+ * conta (planning.md §9, Etapa 5). Não existe design de
  * referência para o card de conta no protótipo (ver planning.md §0, "Achado
  * importante"), então a casca visual é desenhada ad-hoc com os tokens do
  * design system (Etapa 2) — os textos e o comportamento são preservados

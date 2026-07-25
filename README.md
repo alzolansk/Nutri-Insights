@@ -1,14 +1,15 @@
 # WidgetFatSecret
 
 App Android pessoal que lê o seu diário alimentar do **FatSecret** (via OAuth 1.0a
-de três etapas) e mostra o consumo nutricional de hoje em um **widget de tela
-inicial** (Jetpack Glance) e numa tela principal (Jetpack Compose).
+de três etapas) e transforma os registros em dois **widgets de tela inicial**
+(Jetpack Glance) e no app **Nutri Insights** (Jetpack Compose). O app reúne Hoje,
+Tendências, Padrões, Consistência e Peso, além de Metas e conta.
 
 O que o widget mostra: as calorias consumidas em destaque, a meta do dia, uma
 barra de progresso e o restante/excedido. No tamanho largo, ao lado disso,
 proteínas/carboidratos/gorduras (consumido × meta) com barras finas. Mais os
-estados de carregando / erro / desconectado / sem registros. O insight do dia
-continua na tela principal do app — ver [seção 7.1](#71-ícone-tema-do-widget-e-atalho-para-o-fatsecret).
+estados de carregando / erro / desconectado / sem registros. A análise completa
+fica no app — ver [seção 7.1](#71-ícone-tema-e-interação-dos-widgets).
 
 > Os insights e as metas são **apenas cálculos** sobre os valores que você
 > registra e as metas que você define. Não são recomendações nutricionais nem
@@ -71,7 +72,8 @@ manifesto e código continuam sincronizados.
 ## 3. Como conectar a conta pela primeira vez
 
 1. Preencha as credenciais (passo 1) e instale o app.
-2. Abra o app → **“Conectar ao FatSecret”**.
+2. Abra o app, entre em **Metas e conta** pelo avatar e toque em
+   **“Conectar ao FatSecret”**.
 3. O navegador abre a página de autorização do FatSecret. Faça login na sua conta
    e **autorize** o acesso.
 4. O FatSecret redireciona de volta para o app (deep link). O app troca o
@@ -81,9 +83,9 @@ manifesto e código continuam sincronizados.
 5. Adicione o widget à tela inicial (pressione e segure a tela → *Widgets* →
    *WidgetFatSecret*). Ele existe em dois tamanhos (compacto e médio).
 
-Para **desconectar**: botão *Desconectar* — remove os tokens, cancela o
-WorkManager e limpa o cache (decisão documentada: o cache é apagado para o widget
-nunca mostrar dados de uma conta desconectada).
+Para **desconectar**: em **Metas e conta**, toque em *Desconectar*. A ação remove
+os tokens, cancela o WorkManager e limpa o cache (decisão documentada: o cache é
+apagado para o widget nunca mostrar dados de uma conta desconectada).
 
 ---
 
@@ -108,8 +110,8 @@ API — nem na superfície OAuth 1.0a (`rest/server.api`) nem na REST OAuth 2.0.
 ### Alternativa adotada
 
 As metas são **configuradas dentro deste app** e salvas **localmente**
-(`DataStore`, `GoalsStore.kt`). Abra **“Configurar metas”**: calorias, proteína,
-carboidratos e gorduras. Valores iniciais (placeholders, totalmente editáveis):
+(`DataStore`, `GoalsStore.kt`). Abra **Metas e conta** pelo avatar: calorias,
+proteína, carboidratos e gorduras. Valores iniciais (totalmente editáveis):
 **2000 kcal / 150 g proteína / 200 g carbo / 65 g gordura**. O widget atualiza
 imediatamente após salvar.
 
@@ -122,7 +124,7 @@ contra a API ao vivo: caminhando mês a mês por `weights.get_month.v2` até o
 histórico acabar, a pesagem mais antiga que a plataforma devolve é mais recente
 (e mais leve) que o peso inicial exibido no app.
 
-Por isso a mesma tela **“Configurar metas”** tem um campo **Peso inicial (kg)**.
+Por isso **Metas e conta** também tem um campo **Peso inicial (kg)**.
 Preenchido, ele ancora o **total perdido** e o **progresso da meta** no widget de
 peso, fazendo os números baterem com o app do FatSecret. Em branco, o app usa a
 pesagem mais antiga que encontrou no diário (mostrada como dica no próprio
@@ -148,12 +150,27 @@ discretamente a falha.
 
 ## 6. Arquitetura
 
-- **Kotlin**, **Jetpack Compose** (telas), **Jetpack Glance 1.1** (widget).
+- **Kotlin**, **Jetpack Compose** + Navigation Compose (cinco abas e a rota
+  **Metas e conta**) e **Jetpack Glance 1.1** (dois widgets).
 - **Retrofit + OkHttp** para HTTP; **kotlinx.serialization** para JSON.
-- **DataStore** (metas + cache); **EncryptedSharedPreferences** (tokens).
-- **WorkManager** (sincronização); **ViewModel + StateFlow**.
+- **DataStore** para metas, caches dos widgets e histórico nutricional;
+  **EncryptedSharedPreferences** para tokens.
+- **WorkManager** (sincronização); **ViewModels + StateFlow** por superfície de
+  leitura. `AccountViewModel` é o único dono do sync ao abrir, conexão,
+  desconexão e metas.
 - Camada de assinatura **OAuth 1.0 isolada e testável**
   (`fatsecret/oauth/OAuth1Signer.kt`).
+
+`MainActivity` hospeda somente o `AppShell` do Nutri Insights e continua tratando
+o retorno OAuth. As cinco abas leem os mesmos repositórios e caches que alimentam
+os widgets; nenhuma tela chama a sincronização do repositório diretamente. O
+ponto único continua sendo `AppContainer.syncAndRefresh()`, que busca, persiste e
+atualiza os dois widgets na ordem definida.
+
+O histórico usado por Tendências, Padrões, Consistência e Peso vive num DataStore
+dedicado. Dias ausentes permanecem ausentes — nunca são convertidos em consumo
+zero — e as análises exibem janela e amostra. A interface segue o princípio
+“padrão mensurável, nunca julgamento”.
 
 Endpoints usados (método-based `rest/server.api`, compatível com OAuth 1.0):
 
@@ -183,7 +200,7 @@ macros — só meta de peso, em `profile.get`.
 
 ---
 
-## 7.1 Ícone, tema do widget e atalho para o FatSecret
+## 7.1 Ícone, tema e interação dos widgets
 
 **Ícone.** Ícone adaptativo próprio (anel de progresso da meta diária + folha),
 em `drawable/ic_launcher_background.xml`, `ic_launcher_foreground.xml` e
@@ -203,9 +220,11 @@ sistema na hora, sem depender de uma nova sincronização. Cores fixas ficariam
 corrigido. Cores dinâmicas (Material You) foram evitadas de propósito: perderiam
 o verde da marca e podem cair em combinações de contraste não verificáveis.
 
-**Toque abre este app.** Tocar em qualquer ponto do corpo do widget abre o
-`MainActivity` deste app, em **todos** os estados — é de onde se ajusta a meta,
-se reconecta a conta e se força uma sincronização após falha. Uma versão
+**Toque abre o Nutri Insights.** Tocar em qualquer ponto do corpo de qualquer
+widget abre a `MainActivity` deste app, em **todos** os estados. A aba Hoje permite
+comparar os números do widget nutricional; Peso faz o mesmo para o widget de peso;
+o avatar abre **Metas e conta**, onde se ajustam metas, se reconecta a conta e se
+força uma sincronização após falha. Uma versão
 anterior abria o app oficial do FatSecret (com cascata para Play Store → site),
 mas isso foi revertido a pedido; o helper `FatSecretApp.kt` e o bloco
 `<queries>` do manifest que o acompanhava foram removidos junto. O `<queries>`

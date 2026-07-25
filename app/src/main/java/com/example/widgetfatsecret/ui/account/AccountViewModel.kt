@@ -26,13 +26,10 @@ import kotlinx.coroutines.launch
 /**
  * Owns connect/disconnect/sync/goals for the new UI (planning.md §9, Etapa 5).
  *
- * This is the literal migration of [com.example.widgetfatsecret.ui.FatSecretViewModel]
- * described in planning.md §5 and §7: same contracts, same single-flight
- * discipline, same "one coroutine per write sequence" rule for
- * [saveGoals]/[updateWidgets]. The old ViewModel is kept, unchanged, for the
- * legacy screen (`USE_LEGACY_UI = true`) until planning.md's Etapa 11 removes
- * it — until then [MainActivity] instantiates exactly one of the two per
- * process, never both, so the app-open sync never fires twice (risk R5).
+ * Owns the contracts migrated from the original single-screen UI: the same
+ * single-flight discipline and the same "one coroutine per write sequence"
+ * rule for [saveGoals]/[updateWidgets]. [MainActivity] creates this ViewModel
+ * once, so the app-open sync never fires once per tab (risk R5).
  */
 class AccountViewModel(app: Application) : AndroidViewModel(app) {
 

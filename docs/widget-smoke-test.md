@@ -39,3 +39,4 @@ bloqueia o avanço para a etapa seguinte (planning.md §11).
 | Data | Etapa | Resultado | Observações |
 |---|---|---|---|
 | 2026-07-25 | Etapa 0 (linha de base) | ver abaixo | ambiente sem dispositivo/emulador disponível nesta sessão; checklist automatizado executado, checklist manual pendente de execução em dispositivo |
+| 2026-07-25 | Etapa 11 | parcial | 92 testes, debug/release/lint verdes; APK instalado preservando dados; UI nova, Back, providers e toque no widget de peso validados. Ciclo OAuth, reinício, redimensionamento, tema/modo avião, mudança de meta e inspeção visual de todas as variantes continuam pendentes. |

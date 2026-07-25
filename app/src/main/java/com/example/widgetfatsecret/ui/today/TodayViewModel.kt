@@ -16,9 +16,8 @@ import kotlinx.coroutines.flow.stateIn
  * Etapa 4).
  *
  * Deliberately triggers no sync of its own: the app-open sync is already owned
- * by [com.example.widgetfatsecret.ui.FatSecretViewModel] (instantiated by
- * MainActivity regardless of `USE_LEGACY_UI`) and the periodic sync by
- * `SyncWorker`, both funneling through `AppContainer.syncAndRefresh()`. A
+ * by [com.example.widgetfatsecret.ui.account.AccountViewModel] and the periodic
+ * sync by `SyncWorker`, both funneling through `AppContainer.syncAndRefresh()`. A
  * second sync trigger here would be exactly the risk planning.md §10 (R5)
  * warns about once more tabs get their own ViewModel — one sync source only.
  */
