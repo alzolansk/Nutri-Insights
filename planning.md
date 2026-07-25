@@ -1,6 +1,6 @@
 # Plano de Evolução — WidgetFatSecret → Nutri Insights
 
-> **Status:** Etapas 0, 1, 2, 3, 4, 5, 6, 7 e 8 implementadas (ver §9). Etapas 9–11
+> **Status:** Etapas 0, 1, 2, 3, 4, 5, 6, 7, 8 e 9 implementadas (ver §9). Etapas 10–11
 > seguem apenas planejadas, aguardando aprovação para prosseguir.
 > **Premissa central:** os widgets de tela inicial são o que já funciona hoje e são
 > intocáveis. Toda a evolução é **aditiva** — nada da infraestrutura atual é removido
@@ -716,7 +716,7 @@ Etapa 11 Remoção do legado
 
 ---
 
-### Etapa 9 — Peso
+### Etapa 9 — Peso ✅ concluída (2026-07-25)
 
 - **Objetivo:** peso atual, delta, meta do FatSecret, pesagens, evolução com média
   móvel de 7 dias e calorias no mesmo eixo de tempo.
@@ -730,6 +730,21 @@ Etapa 11 Remoção do legado
 - **Build e testes:** `:app:testDebugUnitTest`, `:app:assembleDebug`. Comparar cada
   número com o do widget de peso — divergência aqui indica regressão no cálculo
   compartilhado.
+
+**Status real:** `WeightViewModel` combina o `repository.weightState` — sem
+recalcular nenhum número compartilhado — com o histórico nutricional da Etapa 1.
+`WeightScreen` mostra peso atual, delta da pesagem anterior, tendência, média
+semanal, total, meta e progresso, além de uma linha de média móvel de 7 dias,
+pesagens e barras de calorias alinhadas na mesma janela de 30 dias. Ausências
+permanecem sem valor e o card declara explicitamente que a leitura conjunta não
+mede correlação nem causalidade. A aba também lista as cinco pesagens mais
+recentes; não há previsão de data ou correlação numérica. Três testes novos
+cobrem alinhamento temporal, lacunas e a média móvel. Testes/build: 87 testes JVM,
+0 falhas e `BUILD SUCCESSFUL`. No `emulator-5554`, tela e widget foram comparados
+lado a lado com os mesmos dados: 104,4 kg, −0,5 kg, tendência Perdendo,
+−1,0 kg/sem, total −24,1 kg, meta 83,0 kg e 21,4 kg restantes. Gráfico, rolagem,
+aviso de não causalidade e lista foram inspecionados sem erro `AndroidRuntime`.
+Nenhum arquivo do widget, domínio de peso, repositório ou DataStore foi alterado.
 
 ---
 

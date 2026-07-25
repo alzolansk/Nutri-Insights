@@ -2,6 +2,15 @@
 
 Atualizado em: 2026-07-25
 
+> **Nota de sessão (2026-07-25, 16ª parte) — LEIA PRIMEIRO:** a **Etapa 9 —
+> Peso** do `planning.md` foi implementada. A aba usa exatamente o mesmo estado
+> calculado do widget e acrescenta evolução de 30 dias, média móvel de 7 dias,
+> calorias no mesmo eixo temporal, aviso explícito de não causalidade e pesagens
+> recentes. Tela e widget foram comparados no emulador com números idênticos.
+> **A frente de trabalho ativa continua sendo `planning.md`, não as seções
+> históricas abaixo.** Próxima etapa: **Etapa 10 — Estados**, ainda não
+> implementada. Detalhes desta sessão na seção 28.
+>
 > **Nota de sessão (2026-07-25, 15ª parte) — LEIA PRIMEIRO:** a **Etapa 8 —
 > Consistência** do `planning.md` foi implementada. A aba agora mostra o
 > calendário mensal com quatro estados realmente distintos, sequência atual,
@@ -1655,3 +1664,65 @@ linguagem descritiva, sem cobrança.
   esta etapa não altera infraestrutura, dados ou renderização dos widgets.
 - Próximo passo autorizado pelo plano, mas **não implementado nesta sessão**:
   Etapa 9 — Peso.
+
+## 28. Sessão 2026-07-25 (16ª parte) — Etapa 9: Peso
+
+### Objetivo da sessão
+
+Implementar somente a **Etapa 9 — Peso** do `planning.md`, considerando as
+Etapas 0–8 concluídas e preservando os widgets e toda a infraestrutura existente.
+As novas superfícies seguem `assets/design.md`: cards planos, paleta grafite
+azulada, série histórica em ciano, tipografia e componentes já estabelecidos,
+ausência nunca convertida em zero e linguagem estritamente descritiva.
+
+### Estado compartilhado e série temporal
+
+- [`WeightViewModel.kt`](app/src/main/java/com/example/widgetfatsecret/ui/weight/WeightViewModel.kt)
+  combina `repository.weightState` com `historyRepository.daysFlow`. Peso atual,
+  delta, tendência, média semanal, total, baseline, peso inicial manual, meta,
+  progresso e unidade vêm diretamente do mesmo `WeightUiState` consumido por
+  `WeightWidget`; nada disso é recalculado pela tela.
+- `WeightTimelineCalculator` alinha uma janela fixa de 30 dias. Pesagens e
+  calorias ausentes permanecem `null`, nunca zero. A média móvel é calculada com
+  as pesagens realmente registradas nos sete dias de calendário anteriores a
+  cada pesagem e só é emitida em dias que contêm pesagem.
+- O refresh do histórico nutricional permanece isolado de
+  `AppContainer.syncAndRefresh()` e dos widgets, seguindo o contrato das telas
+  históricas das Etapas 6–8.
+
+### Interface
+
+- [`WeightScreen.kt`](app/src/main/java/com/example/widgetfatsecret/ui/weight/WeightScreen.kt)
+  mostra `SyncStatusChip`, peso atual e delta anterior, tendência, média semanal,
+  delta total, meta do FatSecret com `GoalRing`, evolução e cinco pesagens
+  recentes.
+- O gráfico usa a mesma janela temporal para pontos de pesagem, linha da média
+  móvel de 7 dias e barras de calorias. Lacunas de calorias são contornos
+  tracejados, e o texto informa a amostra real (`X de 30 dias`).
+- Abaixo do gráfico há o aviso: a leitura conjunta não mede correlação e não
+  indica causa entre as séries. Não foi adicionada correlação numérica, previsão
+  de data, TDEE, conselho médico ou nutricional.
+- [`AppShell.kt`](app/src/main/java/com/example/widgetfatsecret/ui/navigation/AppShell.kt)
+  trocou somente o placeholder da rota `Peso` por `WeightRoute()`.
+
+### Testes e validação
+
+- [`WeightTimelineCalculatorTest.kt`](app/src/test/java/com/example/widgetfatsecret/WeightTimelineCalculatorTest.kt)
+  adiciona 3 testes: alinhamento de 30 dias sem transformar ausências em zero,
+  média móvel limitada aos sete dias de calendário anteriores e exclusão de
+  registros fora da janela.
+- `JAVA_HOME='C:\Program Files\Android\Android Studio\jbr' .\gradlew.bat
+  :app:testDebugUnitTest :app:assembleDebug` → **BUILD SUCCESSFUL**, 44 tarefas.
+  **87 testes JVM, 0 falhas** (84 anteriores + 3 novos).
+- APK instalado no `emulator-5554`. A tela mostrou 104,4 kg, delta −0,5 kg,
+  tendência Perdendo, média −1,0 kg/sem, total −24,1 kg, meta 83,0 kg, progresso
+  52% e 21,4 kg restantes. O widget de peso foi aberto na tela inicial e mostrou
+  os mesmos números. Gráfico, legenda, rolagem, aviso de não causalidade e lista
+  de pesagens foram inspecionados; nenhum erro `AndroidRuntime` foi encontrado.
+- Nenhum arquivo em `fatsecret/widget`, `fatsecret/domain`, `fatsecret/data`,
+  manifesto ou DataStore foi alterado.
+
+### Próximo passo
+
+Etapa 10 — Estados (vazio, carregando, erro e dados insuficientes), ainda não
+implementada. Não avançar para ela sem nova autorização.

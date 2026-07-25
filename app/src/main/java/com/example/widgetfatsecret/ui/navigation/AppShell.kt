@@ -38,6 +38,7 @@ import com.example.widgetfatsecret.ui.patterns.PatternsRoute
 import com.example.widgetfatsecret.ui.theme.nutriColors
 import com.example.widgetfatsecret.ui.today.TodayRoute
 import com.example.widgetfatsecret.ui.trends.TrendsRoute
+import com.example.widgetfatsecret.ui.weight.WeightRoute
 
 /**
  * Casca de navegação do "Nutri Insights" (planning.md §9, Etapa 3): Scaffold +
@@ -96,10 +97,7 @@ fun AppShell(accountViewModel: AccountViewModel, modifier: Modifier = Modifier) 
                 ConsistencyRoute()
             }
             composable<Route.Peso> {
-                PlaceholderScreen(
-                    title = "Peso",
-                    description = "Peso atual, delta e evolução chegam na Etapa 9.",
-                )
+                WeightRoute()
             }
             composable<Route.MetasConta> {
                 GoalsAccountRoute(viewModel = accountViewModel)
