@@ -2,6 +2,15 @@
 
 Atualizado em: 2026-07-25
 
+> **Nota de sessão (2026-07-25, 17ª parte) — LEIA PRIMEIRO:** a **Etapa 10 —
+> Estados** do `planning.md` foi implementada. As cinco abas agora compartilham
+> o mesmo contrato para sincronizado, sem registros, não sincronizado, falha de
+> sync, dados insuficientes e carregando. Falhas preservam o último conteúdo
+> válido com chip datado; carregamentos iniciais usam skeletons estáveis; vazios
+> nunca são apresentados como zero. **A frente de trabalho ativa continua sendo
+> `planning.md`.** Próxima etapa: **Etapa 11 — Remoção do legado**, ainda não
+> implementada. Detalhes desta sessão na seção 29.
+>
 > **Nota de sessão (2026-07-25, 16ª parte) — LEIA PRIMEIRO:** a **Etapa 9 —
 > Peso** do `planning.md` foi implementada. A aba usa exatamente o mesmo estado
 > calculado do widget e acrescenta evolução de 30 dias, média móvel de 7 dias,
@@ -1724,5 +1733,82 @@ ausência nunca convertida em zero e linguagem estritamente descritiva.
 
 ### Próximo passo
 
-Etapa 10 — Estados (vazio, carregando, erro e dados insuficientes), ainda não
-implementada. Não avançar para ela sem nova autorização.
+A Etapa 10 — Estados, que era o próximo passo ao fim daquela sessão, foi
+implementada posteriormente e está documentada na seção 29.
+
+## 29. Sessão 2026-07-25 (17ª parte) — Etapa 10: Estados
+
+### Objetivo da sessão
+
+Implementar somente a **Etapa 10 — Estados** do `planning.md`, considerando as
+Etapas 0–9 concluídas. O slide 10 de `assets/app_slides.pptx` foi inspecionado e
+confirmou os seis estados: sincronizado, sem registros, não sincronizado, falha
+de sync, dados insuficientes e carregando. A UI segue `assets/design.md`: paleta
+grafite azulada, superfícies planas, ausência nunca convertida em zero,
+informação textual além de cor e linguagem descritiva.
+
+### Contrato compartilhado
+
+- [`SyncPresentation.kt`](app/src/main/java/com/example/widgetfatsecret/ui/SyncPresentation.kt)
+  centraliza `ContentState`, o status dos chips e as mensagens de
+  `SyncErrorType`. Uma falha com cache resolve como conteúdo: a tela preserva o
+  último snapshot e o chip `Offline — últimos dados` informa a origem datada.
+  Sem cache, a mesma falha vira um estado explícito com causa e nova tentativa.
+- Um sync bem-sucedido com zero entradas resolve como `EMPTY`, distinto de
+  consumo ou peso zero. Um cache ainda não populado resolve como `NOT_SYNCED` e
+  oferece `Sincronizar agora`.
+- [`EmptyState.kt`](app/src/main/java/com/example/widgetfatsecret/ui/design/EmptyState.kt)
+  ganhou ação opcional sem introduzir emoji, imagem ou novo estilo. O componente
+  continua usando texto descritivo e tokens existentes.
+- [`SkeletonBlock.kt`](app/src/main/java/com/example/widgetfatsecret/ui/design/SkeletonBlock.kt)
+  ganhou `ScreenSkeleton`, que recebe a altura de cada card final. As abas Hoje,
+  Tendências, Padrões, Consistência e Peso usam conjuntos próprios, preservando
+  o espaço do conteúdo e evitando deslocamento quando a carga termina.
+
+### Telas e comportamento
+
+- Hoje distingue `Sem registros hoje` de consumo zero e usa quatro skeletons na
+  primeira carga.
+- Tendências e Padrões distinguem histórico nunca sincronizado de período
+  sincronizado vazio; uma nova tentativa atualiza o histórico e o sync diário.
+  Cards com amostra curta agora apresentam `Dados insuficientes`, a regra mínima
+  e a contagem real dentro do próprio card.
+- Consistência mantém o calendário como fonte da distinção entre sem entradas,
+  não sincronizado e futuro; o percentual mostra sua regra mínima quando nenhum
+  dia está disponível.
+- Peso usa o estado de conexão/sync da conta junto do cache específico de peso,
+  evitando mostrar desconectado enquanto a primeira sincronização está em curso.
+  A ausência de pesagens é explicitamente diferente de peso zero.
+- Metas e conta reutiliza o mesmo chip/mensagem e, em erro, explica se os últimos
+  dados válidos continuam disponíveis.
+- `AppShell` injeta a ação única de `AccountViewModel.syncNow()` nas cinco abas;
+  as abas históricas também repetem seu refresh isolado, sem mover esse custo
+  para `AppContainer.syncAndRefresh()` nem para os widgets.
+
+### Testes e validação
+
+- [`SyncPresentationTest.kt`](app/src/test/java/com/example/widgetfatsecret/SyncPresentationTest.kt)
+  adiciona 5 testes: carregando sem cache, falha com cache, sucesso vazio,
+  ainda não sincronizado e falha sem cache.
+- `JAVA_HOME='C:\Program Files\Android\Android Studio\jbr' .\gradlew.bat
+  :app:testDebugUnitTest` → **92 testes JVM, 0 falhas**.
+- `:app:assembleDebug` e `:app:lintDebug` → **BUILD SUCCESSFUL**.
+- APK instalado com `adb install -r` no `emulator-5554`, preservando dados. A
+  tela Hoje sincronizada foi inspecionada com `970 / 1.000 kcal`, macros e
+  refeições. Em modo avião, o conteúdo permaneceu visível e o chip mudou para
+  `Offline — últimos dados · há 1 min`; Tendências também manteve as médias
+  históricas. Não houve `FATAL EXCEPTION`. O modo avião foi desativado e o app
+  voltou ao chip `Sincronizado`.
+- Conta recém-conectada sem registros e token realmente revogado não foram
+  provocados no emulador para não limpar dados pessoais nem invalidar a
+  autorização. Os ramos correspondentes foram cobertos pelo resolvedor puro e
+  revisados no fluxo Compose.
+- Nenhum arquivo em `fatsecret/widget`, `fatsecret/data`, `fatsecret/domain`,
+  manifesto ou DataStore foi alterado. `MainActivity` e
+  `AppContainer.syncAndRefresh()` permanecem intactos.
+
+### Próximo passo
+
+Etapa 11 — Remoção do legado, ainda não implementada. Não avançar sem nova
+autorização e, antes de remover a flag, executar a validação completa exigida no
+`planning.md`.

@@ -21,7 +21,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.widgetfatsecret.fatsecret.data.NutritionSnapshot
 import com.example.widgetfatsecret.fatsecret.data.NutritionUiState
 import com.example.widgetfatsecret.fatsecret.data.SyncStatus as DataSyncStatus
 import com.example.widgetfatsecret.fatsecret.domain.NutritionFormat
@@ -31,8 +30,9 @@ import com.example.widgetfatsecret.ui.design.NutriPrimaryButton
 import com.example.widgetfatsecret.ui.design.NutriSecondaryButton
 import com.example.widgetfatsecret.ui.design.NutriSpacing
 import com.example.widgetfatsecret.ui.design.StatCard
-import com.example.widgetfatsecret.ui.design.SyncStatus
 import com.example.widgetfatsecret.ui.design.SyncStatusChip
+import com.example.widgetfatsecret.ui.toChipStatus
+import com.example.widgetfatsecret.ui.toUserMessage
 import com.example.widgetfatsecret.ui.theme.nutriColors
 
 /**
@@ -110,6 +110,22 @@ fun GoalsAccountScreen(
             detail = snapshot.lastSyncMillis.takeIf { it > 0 }?.let { NutritionFormat.timeAgo(it) },
         )
 
+        if (snapshot.connected && snapshot.syncStatus == DataSyncStatus.ERROR) {
+            StatCard(title = "Última sincronização") {
+                Text(
+                    text = if (snapshot.hasValidData) {
+                        "A atualização falhou, mas os últimos dados válidos continuam visíveis nas telas. " +
+                            (snapshot.errorType?.toUserMessage() ?: "Tente novamente mais tarde.")
+                    } else {
+                        snapshot.errorType?.toUserMessage()
+                            ?: "Não foi possível trazer os dados. Tente sincronizar novamente."
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.nutriColors.text2,
+                )
+            }
+        }
+
         AccountCard(
             connected = snapshot.connected,
             connecting = connecting,
@@ -158,14 +174,6 @@ fun GoalsAccountScreen(
             },
         )
     }
-}
-
-private fun NutritionSnapshot.toChipStatus(): SyncStatus = when {
-    !connected -> SyncStatus.DISCONNECTED
-    syncStatus == DataSyncStatus.LOADING -> SyncStatus.SYNCING
-    syncStatus == DataSyncStatus.ERROR && hasValidData -> SyncStatus.OFFLINE
-    syncStatus == DataSyncStatus.ERROR -> SyncStatus.ERROR
-    else -> SyncStatus.SYNCED
 }
 
 @Composable

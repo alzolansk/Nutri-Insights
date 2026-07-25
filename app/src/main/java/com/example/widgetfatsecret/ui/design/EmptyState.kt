@@ -12,6 +12,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.example.widgetfatsecret.ui.theme.WidgetFatSecretTheme
 import com.example.widgetfatsecret.ui.theme.nutriColors
@@ -19,8 +20,8 @@ import com.example.widgetfatsecret.ui.theme.nutriColors
 /**
  * Estado vazio / dados insuficientes, com linguagem descritiva (nunca de
  * cobrança — slide 2). Serve tanto a "sincronizado sem registros" quanto a
- * "faltam amostras para esta análise". Um [icon] opcional (emoji ou glifo curto)
- * dá contexto sem depender de recurso gráfico.
+ * "faltam amostras para esta análise". Um [icon] opcional aceita apenas um
+ * glifo textual curto; o design do app não usa emoji nem ilustração.
  */
 @Composable
 fun EmptyState(
@@ -28,12 +29,15 @@ fun EmptyState(
     modifier: Modifier = Modifier,
     description: String? = null,
     icon: String? = null,
+    actionLabel: String? = null,
+    onAction: (() -> Unit)? = null,
+    contentPadding: Dp = NutriSpacing.xl,
 ) {
     val colors = MaterialTheme.nutriColors
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(NutriSpacing.xl),
+            .padding(contentPadding),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(NutriSpacing.sm),
     ) {
@@ -54,6 +58,9 @@ fun EmptyState(
                 textAlign = TextAlign.Center,
             )
         }
+        if (actionLabel != null && onAction != null) {
+            NutriPrimaryButton(text = actionLabel, onClick = onAction)
+        }
     }
 }
 
@@ -69,10 +76,11 @@ private fun EmptyStatePreview() {
     WidgetFatSecretTheme {
         EmptyState(
             modifier = Modifier.padding(16.dp),
-            icon = "📊",
             title = "Dados insuficientes",
             description = "São necessários ao menos 4 dias registrados na janela " +
                 "para calcular uma média confiável. Você tem 2.",
+            actionLabel = "Sincronizar agora",
+            onAction = {},
         )
     }
 }

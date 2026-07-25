@@ -1,7 +1,7 @@
 # Plano de Evolução — WidgetFatSecret → Nutri Insights
 
-> **Status:** Etapas 0, 1, 2, 3, 4, 5, 6, 7, 8 e 9 implementadas (ver §9). Etapas 10–11
-> seguem apenas planejadas, aguardando aprovação para prosseguir.
+> **Status:** Etapas 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 e 10 implementadas (ver §9).
+> A Etapa 11 segue apenas planejada, aguardando aprovação para prosseguir.
 > **Premissa central:** os widgets de tela inicial são o que já funciona hoje e são
 > intocáveis. Toda a evolução é **aditiva** — nada da infraestrutura atual é removido
 > antes de existir paridade verificada.
@@ -760,6 +760,27 @@ Nenhum arquivo do widget, domínio de peso, repositório ou DataStore foi altera
   tela vazia; esqueleto com altura do conteúdo final (sem deslocamento de layout).
 - **Build e testes:** `:app:assembleDebug`. Testes manuais: modo avião, conta
   recém-conectada sem registros, token revogado.
+
+**Status real:** implementado. O mapeamento central `ContentState` cobre conta
+desconectada e os seis estados do slide 10: sincronizado, sem registros, não
+sincronizado, falha de sync, dados insuficientes e carregando. As telas Hoje,
+Tendências, Padrões, Consistência e Peso agora usam o mesmo contrato. Uma falha
+com cache mantém o último conteúdo e mostra chip datado; uma falha sem cache
+mostra a causa e uma ação de nova tentativa; um retorno bem-sucedido vazio é
+descrito como ausência de registros, nunca como consumo/peso zero. Estados
+iniciais usam skeletons dimensionados conforme os cards finais, e as telas
+históricas atualizam tanto o histórico quanto o sync principal ao tentar de
+novo. Cards com amostra abaixo do mínimo mostram a regra e a contagem real.
+`EmptyState` ganhou ação opcional e `ScreenSkeleton` compõe blocos com alturas
+estáveis. Cinco testes novos cobrem o resolvedor de estados. Validação final:
+92 testes JVM, 0 falhas, `assembleDebug` e `lintDebug` verdes. No
+`emulator-5554`, modo avião preservou `970 / 1.000 kcal` na tela Hoje e as
+médias em Tendências, com chip `Offline — últimos dados` datado; o modo avião
+foi desativado e o estado sincronizado foi restaurado. Conta recém-conectada sem
+registros e token realmente revogado não foram produzidos manualmente para não
+apagar dados ou invalidar a autorização existente; seus ramos foram cobertos
+pelo resolvedor puro e pela inspeção do fluxo. Nenhum widget, receiver,
+manifesto, DataStore ou sincronização de infraestrutura foi alterado.
 
 ---
 

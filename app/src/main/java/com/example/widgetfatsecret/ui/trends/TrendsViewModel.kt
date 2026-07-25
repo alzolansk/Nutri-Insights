@@ -11,6 +11,7 @@ import com.example.widgetfatsecret.fatsecret.domain.history.CalorieDistribution
 import com.example.widgetfatsecret.fatsecret.domain.history.TrendCalculator
 import com.example.widgetfatsecret.fatsecret.domain.history.TrendSummary
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
@@ -25,6 +26,8 @@ data class TrendsUiState(
     val trend14: TrendSummary = EMPTY_TREND,
     val trend30: TrendSummary = EMPTY_TREND,
     val distribution: CalorieDistribution = CalorieDistribution(0, 0, 0),
+    val historyAvailable: Boolean = false,
+    val isRefreshing: Boolean = true,
 )
 
 /**
@@ -43,12 +46,30 @@ class TrendsViewModel(application: Application) : AndroidViewModel(application) 
     private val container = AppContainer.get(application)
     private val repo = container.repository
     private val historyRepo = container.historyRepository
+    private val isRefreshing = MutableStateFlow(false)
 
     init {
-        viewModelScope.launch { historyRepo.refresh() }
+        refresh()
     }
 
-    val uiState: StateFlow<TrendsUiState> = combine(repo.uiState, historyRepo.daysFlow) { ui, days ->
+    fun refresh() {
+        if (isRefreshing.value) return
+        viewModelScope.launch {
+            isRefreshing.value = true
+            try {
+                historyRepo.refresh()
+            } finally {
+                isRefreshing.value = false
+            }
+        }
+    }
+
+    val uiState: StateFlow<TrendsUiState> = combine(
+        repo.uiState,
+        historyRepo.historyFlow,
+        isRefreshing,
+    ) { ui, history, refreshing ->
+        val days = history.days
         val today = FatSecretDate.today()
         val trend30 = TrendCalculator.summarize(days, windowDays = 30, today = today)
         TrendsUiState(
@@ -58,6 +79,8 @@ class TrendsViewModel(application: Application) : AndroidViewModel(application) 
             trend14 = TrendCalculator.summarize(days, windowDays = 14, today = today),
             trend30 = trend30,
             distribution = TrendCalculator.distribution(trend30.days, ui.goals.caloriesKcal.toDouble()),
+            historyAvailable = history.syncedMonths.isNotEmpty() || days.isNotEmpty(),
+            isRefreshing = refreshing,
         )
     }.stateIn(
         scope = viewModelScope,

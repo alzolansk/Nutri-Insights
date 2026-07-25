@@ -13,6 +13,7 @@ import com.example.widgetfatsecret.fatsecret.domain.history.PatternMetric
 import com.example.widgetfatsecret.fatsecret.domain.history.PatternSummary
 import com.example.widgetfatsecret.fatsecret.domain.history.WeeklyCycleSummary
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
@@ -38,6 +39,8 @@ data class PatternsUiState(
     val cycle: WeeklyCycleSummary = EMPTY_CYCLE,
     val calorieFrequency: GoalFrequency = GoalFrequency(PatternMetric.CALORIES, 0, 0, 0),
     val macroFrequencies: List<GoalFrequency> = emptyList(),
+    val historyAvailable: Boolean = false,
+    val isRefreshing: Boolean = true,
 )
 
 /**
@@ -50,12 +53,30 @@ class PatternsViewModel(application: Application) : AndroidViewModel(application
     private val container = AppContainer.get(application)
     private val repo = container.repository
     private val historyRepo = container.historyRepository
+    private val isRefreshing = MutableStateFlow(false)
 
     init {
-        viewModelScope.launch { historyRepo.refresh() }
+        refresh()
     }
 
-    val uiState: StateFlow<PatternsUiState> = combine(repo.uiState, historyRepo.daysFlow) { ui, days ->
+    fun refresh() {
+        if (isRefreshing.value) return
+        viewModelScope.launch {
+            isRefreshing.value = true
+            try {
+                historyRepo.refresh()
+            } finally {
+                isRefreshing.value = false
+            }
+        }
+    }
+
+    val uiState: StateFlow<PatternsUiState> = combine(
+        repo.uiState,
+        historyRepo.historyFlow,
+        isRefreshing,
+    ) { ui, history, refreshing ->
+        val days = history.days
         val today = FatSecretDate.today()
         val goals = ui.goals
         PatternsUiState(
@@ -93,6 +114,8 @@ class PatternsViewModel(application: Application) : AndroidViewModel(application
                     goals.fatG.toDouble(),
                 ),
             ),
+            historyAvailable = history.syncedMonths.isNotEmpty() || days.isNotEmpty(),
+            isRefreshing = refreshing,
         )
     }.stateIn(
         scope = viewModelScope,

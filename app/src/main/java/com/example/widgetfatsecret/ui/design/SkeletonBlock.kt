@@ -55,6 +55,29 @@ fun SkeletonBlock(
     )
 }
 
+/**
+ * Screen-level loading placeholder. Each height mirrors one final card so the
+ * surrounding layout keeps the same vertical footprint when content arrives.
+ */
+@Composable
+fun ScreenSkeleton(
+    cardHeights: List<androidx.compose.ui.unit.Dp>,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(NutriSpacing.lg),
+    ) {
+        cardHeights.forEach { cardHeight ->
+            SkeletonBlock(
+                modifier = Modifier.fillMaxWidth(),
+                height = cardHeight,
+                cornerRadius = NutriRadii.Card,
+            )
+        }
+    }
+}
+
 @Preview(name = "SkeletonBlock claro", showBackground = true, backgroundColor = 0xFFFFFFFF)
 @Preview(
     name = "SkeletonBlock escuro",

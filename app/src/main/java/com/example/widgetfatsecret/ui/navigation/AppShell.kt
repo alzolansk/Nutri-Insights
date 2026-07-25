@@ -85,19 +85,19 @@ fun AppShell(accountViewModel: AccountViewModel, modifier: Modifier = Modifier) 
             modifier = Modifier.padding(innerPadding),
         ) {
             composable<Route.Hoje> {
-                TodayRoute()
+                TodayRoute(onSync = accountViewModel::syncNow)
             }
             composable<Route.Tendencias> {
-                TrendsRoute()
+                TrendsRoute(onSync = accountViewModel::syncNow)
             }
             composable<Route.Padroes> {
-                PatternsRoute()
+                PatternsRoute(onSync = accountViewModel::syncNow)
             }
             composable<Route.Consistencia> {
-                ConsistencyRoute()
+                ConsistencyRoute(onSync = accountViewModel::syncNow)
             }
             composable<Route.Peso> {
-                WeightRoute()
+                WeightRoute(onSync = accountViewModel::syncNow)
             }
             composable<Route.MetasConta> {
                 GoalsAccountRoute(viewModel = accountViewModel)

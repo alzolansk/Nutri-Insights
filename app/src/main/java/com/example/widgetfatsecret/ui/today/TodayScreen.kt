@@ -25,7 +25,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.widgetfatsecret.fatsecret.data.NutritionSnapshot
 import com.example.widgetfatsecret.fatsecret.data.NutritionUiState
-import com.example.widgetfatsecret.fatsecret.data.SyncStatus as DataSyncStatus
 import com.example.widgetfatsecret.fatsecret.domain.DailyNutrition
 import com.example.widgetfatsecret.fatsecret.domain.MealTotal
 import com.example.widgetfatsecret.fatsecret.domain.NutritionCalculator
@@ -34,9 +33,13 @@ import com.example.widgetfatsecret.fatsecret.domain.NutritionGoals
 import com.example.widgetfatsecret.ui.design.EmptyState
 import com.example.widgetfatsecret.ui.design.GoalRing
 import com.example.widgetfatsecret.ui.design.NutriSpacing
+import com.example.widgetfatsecret.ui.design.ScreenSkeleton
 import com.example.widgetfatsecret.ui.design.StatCard
-import com.example.widgetfatsecret.ui.design.SyncStatus
 import com.example.widgetfatsecret.ui.design.SyncStatusChip
+import com.example.widgetfatsecret.ui.ContentState
+import com.example.widgetfatsecret.ui.toChipStatus
+import com.example.widgetfatsecret.ui.toContentState
+import com.example.widgetfatsecret.ui.toUserMessage
 import com.example.widgetfatsecret.ui.theme.MonoText
 import com.example.widgetfatsecret.ui.theme.nutriColors
 import kotlin.math.abs
@@ -48,9 +51,13 @@ import kotlin.math.roundToInt
  * Etapa 4).
  */
 @Composable
-fun TodayRoute(modifier: Modifier = Modifier, viewModel: TodayViewModel = viewModel()) {
+fun TodayRoute(
+    modifier: Modifier = Modifier,
+    viewModel: TodayViewModel = viewModel(),
+    onSync: (() -> Unit)? = null,
+) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    TodayScreen(state = state, modifier = modifier)
+    TodayScreen(state = state, onSync = onSync, modifier = modifier)
 }
 
 /**
@@ -60,7 +67,11 @@ fun TodayRoute(modifier: Modifier = Modifier, viewModel: TodayViewModel = viewMo
  * judgement (planning.md's negative scope).
  */
 @Composable
-fun TodayScreen(state: NutritionUiState, modifier: Modifier = Modifier) {
+fun TodayScreen(
+    state: NutritionUiState,
+    modifier: Modifier = Modifier,
+    onSync: (() -> Unit)? = null,
+) {
     val snapshot = state.snapshot
     val goals = state.goals
     val daily = snapshot.daily
@@ -77,18 +88,33 @@ fun TodayScreen(state: NutritionUiState, modifier: Modifier = Modifier) {
             detail = snapshot.lastSyncMillis.takeIf { it > 0 }?.let { NutritionFormat.timeAgo(it) },
         )
 
-        when {
-            !snapshot.connected -> EmptyState(
-                icon = "🔌",
+        when (snapshot.toContentState()) {
+            ContentState.DISCONNECTED -> EmptyState(
                 title = "Conta desconectada",
                 description = "Conecte sua conta na aba Metas e conta para ver os dados de hoje.",
             )
-            !snapshot.hasValidData -> EmptyState(
-                icon = "⏳",
-                title = "Aguardando sincronização",
-                description = "Assim que a primeira sincronização terminar, seus dados aparecem aqui.",
+            ContentState.LOADING -> ScreenSkeleton(todaySkeletonHeights)
+            ContentState.NOT_SYNCED -> {
+                EmptyState(
+                    title = "Ainda não sincronizado",
+                    description = "Nenhum dado foi trazido para este aparelho ainda.",
+                    actionLabel = "Sincronizar agora",
+                    onAction = onSync,
+                )
+                ScreenSkeleton(todaySkeletonHeights)
+            }
+            ContentState.SYNC_ERROR -> EmptyState(
+                title = "Falha na sincronização",
+                description = snapshot.errorType?.toUserMessage()
+                    ?: "Não foi possível trazer os dados. Tente sincronizar novamente.",
+                actionLabel = "Tentar novamente",
+                onAction = onSync,
             )
-            else -> {
+            ContentState.EMPTY -> EmptyState(
+                title = "Sem registros hoje",
+                description = "O dia foi sincronizado e não há entradas. Isso não representa consumo zero.",
+            )
+            ContentState.CONTENT -> {
                 CaloriesCard(daily, goals)
                 MacrosCard(daily, goals)
                 MealsCard(snapshot.mealBreakdown)
@@ -98,13 +124,7 @@ fun TodayScreen(state: NutritionUiState, modifier: Modifier = Modifier) {
     }
 }
 
-private fun NutritionSnapshot.toChipStatus(): SyncStatus = when {
-    !connected -> SyncStatus.DISCONNECTED
-    syncStatus == DataSyncStatus.LOADING -> SyncStatus.SYNCING
-    syncStatus == DataSyncStatus.ERROR && hasValidData -> SyncStatus.OFFLINE
-    syncStatus == DataSyncStatus.ERROR -> SyncStatus.ERROR
-    else -> SyncStatus.SYNCED
-}
+private val todaySkeletonHeights = listOf(196.dp, 220.dp, 140.dp, 136.dp)
 
 @Composable
 private fun CaloriesCard(daily: DailyNutrition, goals: NutritionGoals) {

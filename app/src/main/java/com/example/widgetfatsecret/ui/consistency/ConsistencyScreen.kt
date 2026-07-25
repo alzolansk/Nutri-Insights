@@ -26,8 +26,6 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.widgetfatsecret.fatsecret.data.NutritionSnapshot
-import com.example.widgetfatsecret.fatsecret.data.SyncStatus as DataSyncStatus
 import com.example.widgetfatsecret.fatsecret.domain.NutritionFormat
 import com.example.widgetfatsecret.fatsecret.domain.history.ConsistencyDayState
 import com.example.widgetfatsecret.fatsecret.domain.history.ConsistencySummary
@@ -35,23 +33,47 @@ import com.example.widgetfatsecret.ui.design.CalendarGrid
 import com.example.widgetfatsecret.ui.design.EmptyState
 import com.example.widgetfatsecret.ui.design.MetricValue
 import com.example.widgetfatsecret.ui.design.NutriSpacing
+import com.example.widgetfatsecret.ui.design.ScreenSkeleton
 import com.example.widgetfatsecret.ui.design.StatCard
-import com.example.widgetfatsecret.ui.design.SyncStatus
 import com.example.widgetfatsecret.ui.design.SyncStatusChip
+import com.example.widgetfatsecret.ui.ContentState
+import com.example.widgetfatsecret.ui.toChipStatus
+import com.example.widgetfatsecret.ui.toContentState
+import com.example.widgetfatsecret.ui.toUserMessage
 import com.example.widgetfatsecret.ui.theme.MonoText
 import com.example.widgetfatsecret.ui.theme.nutriColors
 import java.time.YearMonth
 import kotlin.math.roundToInt
 
 @Composable
-fun ConsistencyRoute(modifier: Modifier = Modifier, viewModel: ConsistencyViewModel = viewModel()) {
+fun ConsistencyRoute(
+    modifier: Modifier = Modifier,
+    viewModel: ConsistencyViewModel = viewModel(),
+    onSync: (() -> Unit)? = null,
+) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    ConsistencyScreen(state = state, modifier = modifier)
+    ConsistencyScreen(
+        state = state,
+        onSync = {
+            viewModel.refresh()
+            onSync?.invoke()
+        },
+        modifier = modifier,
+    )
 }
 
 @Composable
-fun ConsistencyScreen(state: ConsistencyUiState, modifier: Modifier = Modifier) {
+fun ConsistencyScreen(
+    state: ConsistencyUiState,
+    modifier: Modifier = Modifier,
+    onSync: (() -> Unit)? = null,
+) {
     val snapshot = state.snapshot
+    val contentState = snapshot.toContentState(
+        hasUsableData = state.historyAvailable,
+        hasRecords = state.historyAvailable,
+        loading = state.isRefreshing && !state.historyAvailable,
+    )
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -64,26 +86,40 @@ fun ConsistencyScreen(state: ConsistencyUiState, modifier: Modifier = Modifier) 
             detail = snapshot.lastSyncMillis.takeIf { it > 0 }?.let { NutritionFormat.timeAgo(it) },
         )
 
-        if (!snapshot.connected) {
-            EmptyState(
+        when (contentState) {
+            ContentState.DISCONNECTED -> EmptyState(
                 title = "Conta desconectada",
                 description = "Conecte sua conta em Metas e conta para ver os dias registrados.",
             )
-        } else {
-            MonthCard(month = state.month, summary = state.monthSummary)
-            StreakCard(state.rollingSummary)
-            ThirtyDayCard(state.rollingSummary)
+            ContentState.LOADING -> ScreenSkeleton(consistencySkeletonHeights)
+            ContentState.NOT_SYNCED -> {
+                EmptyState(
+                    title = "Histórico ainda não sincronizado",
+                    description = "Nenhum mês foi trazido para este aparelho ainda.",
+                    actionLabel = "Sincronizar agora",
+                    onAction = onSync,
+                )
+                ScreenSkeleton(consistencySkeletonHeights)
+            }
+            ContentState.SYNC_ERROR -> EmptyState(
+                title = "Falha na sincronização",
+                description = snapshot.errorType?.toUserMessage()
+                    ?: "Não foi possível trazer o histórico. Tente sincronizar novamente.",
+                actionLabel = "Tentar novamente",
+                onAction = onSync,
+            )
+            ContentState.EMPTY,
+            ContentState.CONTENT,
+            -> {
+                MonthCard(month = state.month, summary = state.monthSummary)
+                StreakCard(state.rollingSummary)
+                ThirtyDayCard(state.rollingSummary)
+            }
         }
     }
 }
 
-private fun NutritionSnapshot.toChipStatus(): SyncStatus = when {
-    !connected -> SyncStatus.DISCONNECTED
-    syncStatus == DataSyncStatus.LOADING -> SyncStatus.SYNCING
-    syncStatus == DataSyncStatus.ERROR && hasValidData -> SyncStatus.OFFLINE
-    syncStatus == DataSyncStatus.ERROR -> SyncStatus.ERROR
-    else -> SyncStatus.SYNCED
-}
+private val consistencySkeletonHeights = listOf(390.dp, 160.dp, 160.dp)
 
 @Composable
 private fun MonthCard(month: YearMonth, summary: ConsistencySummary) {
@@ -180,10 +216,10 @@ private fun ThirtyDayCard(summary: ConsistencySummary) {
         meta = "${summary.synchronizedDays} de ${summary.windowDays} sincronizados",
     ) {
         if (summary.synchronizedDays == 0) {
-            Text(
-                text = "Ainda não há dias sincronizados suficientes para calcular o percentual.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = colors.text2,
+            EmptyState(
+                title = "Dados insuficientes",
+                description = "É necessário ao menos 1 dia sincronizado para calcular o percentual.",
+                contentPadding = 0.dp,
             )
         } else {
             MetricValue(value = "${(summary.recordedPercent * 100).roundToInt()}", unit = "% registrados")

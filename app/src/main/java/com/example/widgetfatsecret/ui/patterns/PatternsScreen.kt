@@ -18,10 +18,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.widgetfatsecret.fatsecret.data.NutritionSnapshot
-import com.example.widgetfatsecret.fatsecret.data.SyncStatus as DataSyncStatus
 import com.example.widgetfatsecret.fatsecret.domain.NutritionFormat
 import com.example.widgetfatsecret.fatsecret.domain.history.GoalFrequency
 import com.example.widgetfatsecret.fatsecret.domain.history.PatternMetric
@@ -30,9 +29,13 @@ import com.example.widgetfatsecret.fatsecret.domain.history.WeekdayAverage
 import com.example.widgetfatsecret.ui.design.EmptyState
 import com.example.widgetfatsecret.ui.design.MetaChip
 import com.example.widgetfatsecret.ui.design.NutriSpacing
+import com.example.widgetfatsecret.ui.design.ScreenSkeleton
 import com.example.widgetfatsecret.ui.design.StatCard
-import com.example.widgetfatsecret.ui.design.SyncStatus
 import com.example.widgetfatsecret.ui.design.SyncStatusChip
+import com.example.widgetfatsecret.ui.ContentState
+import com.example.widgetfatsecret.ui.toChipStatus
+import com.example.widgetfatsecret.ui.toContentState
+import com.example.widgetfatsecret.ui.toUserMessage
 import com.example.widgetfatsecret.ui.theme.MonoText
 import com.example.widgetfatsecret.ui.theme.nutriColors
 import java.time.DayOfWeek
@@ -40,9 +43,20 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 
 @Composable
-fun PatternsRoute(modifier: Modifier = Modifier, viewModel: PatternsViewModel = viewModel()) {
+fun PatternsRoute(
+    modifier: Modifier = Modifier,
+    viewModel: PatternsViewModel = viewModel(),
+    onSync: (() -> Unit)? = null,
+) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    PatternsScreen(state = state, modifier = modifier)
+    PatternsScreen(
+        state = state,
+        onSync = {
+            viewModel.refresh()
+            onSync?.invoke()
+        },
+        modifier = modifier,
+    )
 }
 
 /**
@@ -51,9 +65,18 @@ fun PatternsRoute(modifier: Modifier = Modifier, viewModel: PatternsViewModel = 
  * explicitly instead of being inferred from today's meal breakdown.
  */
 @Composable
-fun PatternsScreen(state: PatternsUiState, modifier: Modifier = Modifier) {
+fun PatternsScreen(
+    state: PatternsUiState,
+    modifier: Modifier = Modifier,
+    onSync: (() -> Unit)? = null,
+) {
     var selectedMethodology by remember { mutableStateOf<Methodology?>(null) }
     val snapshot = state.snapshot
+    val contentState = snapshot.toContentState(
+        hasUsableData = state.historyAvailable,
+        hasRecords = state.pattern.daysRecorded > 0,
+        loading = state.isRefreshing && !state.historyAvailable,
+    )
 
     Column(
         modifier = modifier
@@ -67,43 +90,65 @@ fun PatternsScreen(state: PatternsUiState, modifier: Modifier = Modifier) {
             detail = snapshot.lastSyncMillis.takeIf { it > 0 }?.let { NutritionFormat.timeAgo(it) },
         )
 
-        if (!snapshot.connected) {
-            EmptyState(
+        when (contentState) {
+            ContentState.DISCONNECTED -> EmptyState(
                 title = "Conta desconectada",
                 description = "Conecte sua conta em Metas e conta para observar padrões do histórico.",
             )
-        } else {
-            WeekdayAveragesCard(state.pattern)
-
-            if (!state.pattern.hasEnoughData) {
-                StatCard(
-                    title = "Padrões observados",
-                    meta = sampleText(state.pattern.daysRecorded),
-                ) {
-                    Text(
-                        text = "Dados insuficientes — são necessários ao menos " +
-                            "${PatternSummary.MIN_RECORDED_DAYS} dias registrados na janela.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.nutriColors.text2,
-                    )
-                }
-            } else {
-                DayPatternInsight(state.pattern, onOpenMethodology = { selectedMethodology = it })
-                CyclePatternInsight(state, onOpenMethodology = { selectedMethodology = it })
-                GoalFrequencyInsight(
-                    frequency = state.calorieFrequency,
-                    title = "Frequência em relação à meta",
-                    sentence = calorieFrequencySentence(state.calorieFrequency),
-                    calculation = "Cada dia registrado foi comparado com a meta local de calorias. " +
-                        "A faixa próxima à meta vai de 95% a 105%; o resultado conta os dias abaixo " +
-                        "ou acima dessa faixa.",
-                    limitation = commonGoalLimitation,
-                    onOpenMethodology = { selectedMethodology = it },
+            ContentState.LOADING -> ScreenSkeleton(patternsSkeletonHeights)
+            ContentState.NOT_SYNCED -> {
+                EmptyState(
+                    title = "Histórico ainda não sincronizado",
+                    description = "Nenhuma janela foi trazida para este aparelho ainda.",
+                    actionLabel = "Sincronizar agora",
+                    onAction = onSync,
                 )
-                MacroPatternInsight(state, onOpenMethodology = { selectedMethodology = it })
+                ScreenSkeleton(patternsSkeletonHeights)
             }
+            ContentState.SYNC_ERROR -> EmptyState(
+                title = "Falha na sincronização",
+                description = snapshot.errorType?.toUserMessage()
+                    ?: "Não foi possível trazer o histórico. Tente sincronizar novamente.",
+                actionLabel = "Tentar novamente",
+                onAction = onSync,
+            )
+            ContentState.EMPTY -> EmptyState(
+                title = "Sem registros no período",
+                description = "A janela foi sincronizada e não há dias com entradas. Ausência não é consumo zero.",
+            )
+            ContentState.CONTENT -> {
+                WeekdayAveragesCard(state.pattern)
 
-            MealHistoryState()
+                if (!state.pattern.hasEnoughData) {
+                    StatCard(
+                        title = "Padrões observados",
+                        meta = sampleText(state.pattern.daysRecorded),
+                    ) {
+                        EmptyState(
+                            title = "Dados insuficientes",
+                            description = "São necessários ao menos ${PatternSummary.MIN_RECORDED_DAYS} dias " +
+                                "registrados na janela. Você tem ${state.pattern.daysRecorded}.",
+                            contentPadding = 0.dp,
+                        )
+                    }
+                } else {
+                    DayPatternInsight(state.pattern, onOpenMethodology = { selectedMethodology = it })
+                    CyclePatternInsight(state, onOpenMethodology = { selectedMethodology = it })
+                    GoalFrequencyInsight(
+                        frequency = state.calorieFrequency,
+                        title = "Frequência em relação à meta",
+                        sentence = calorieFrequencySentence(state.calorieFrequency),
+                        calculation = "Cada dia registrado foi comparado com a meta local de calorias. " +
+                            "A faixa próxima à meta vai de 95% a 105%; o resultado conta os dias abaixo " +
+                            "ou acima dessa faixa.",
+                        limitation = commonGoalLimitation,
+                        onOpenMethodology = { selectedMethodology = it },
+                    )
+                    MacroPatternInsight(state, onOpenMethodology = { selectedMethodology = it })
+                }
+
+                MealHistoryState()
+            }
         }
     }
 
@@ -115,13 +160,7 @@ fun PatternsScreen(state: PatternsUiState, modifier: Modifier = Modifier) {
     }
 }
 
-private fun NutritionSnapshot.toChipStatus(): SyncStatus = when {
-    !connected -> SyncStatus.DISCONNECTED
-    syncStatus == DataSyncStatus.LOADING -> SyncStatus.SYNCING
-    syncStatus == DataSyncStatus.ERROR && hasValidData -> SyncStatus.OFFLINE
-    syncStatus == DataSyncStatus.ERROR -> SyncStatus.ERROR
-    else -> SyncStatus.SYNCED
-}
+private val patternsSkeletonHeights = listOf(320.dp, 148.dp, 148.dp, 148.dp)
 
 @Composable
 private fun WeekdayAveragesCard(summary: PatternSummary) {
@@ -207,11 +246,10 @@ private fun CyclePatternInsight(state: PatternsUiState, onOpenMethodology: (Meth
             title = "Ciclo semanal",
             meta = sampleText(total),
         ) {
-            Text(
-                text = "Dados insuficientes — são necessários ao menos 2 dias registrados " +
-                    "nos dias úteis e 2 no fim de semana.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.nutriColors.text2,
+            EmptyState(
+                title = "Dados insuficientes",
+                description = "São necessários ao menos 2 dias registrados nos dias úteis e 2 no fim de semana.",
+                contentPadding = 0.dp,
             )
         }
         return

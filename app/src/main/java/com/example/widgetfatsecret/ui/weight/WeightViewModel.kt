@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.widgetfatsecret.fatsecret.data.AppContainer
 import com.example.widgetfatsecret.fatsecret.data.DayNutrition
 import com.example.widgetfatsecret.fatsecret.data.WeightSnapshot
+import com.example.widgetfatsecret.fatsecret.data.SyncStatus
 import com.example.widgetfatsecret.fatsecret.domain.FatSecretDate
 import com.example.widgetfatsecret.fatsecret.domain.WeightEntry
 import com.example.widgetfatsecret.fatsecret.domain.WeightStats
@@ -28,6 +29,8 @@ data class WeightUiState(
     val snapshot: WeightSnapshot = WeightSnapshot(),
     val stats: WeightStats = WeightStats(),
     val timeline: List<WeightTimelinePoint> = emptyList(),
+    val isSyncing: Boolean = false,
+    val accountConnected: Boolean = false,
 )
 
 /**
@@ -86,11 +89,15 @@ class WeightViewModel(application: Application) : AndroidViewModel(application) 
     init {
         // Calories share the chart's time axis. This remains isolated from the
         // widgets and from AppContainer.syncAndRefresh(), as in Etapas 6-8.
+        refreshHistory()
+    }
+
+    fun refreshHistory() {
         viewModelScope.launch { historyRepository.refresh() }
     }
 
     val uiState: StateFlow<WeightUiState> =
-        combine(repository.weightState, historyRepository.daysFlow) { weight, nutrition ->
+        combine(repository.weightState, historyRepository.daysFlow, repository.uiState) { weight, nutrition, nutritionState ->
             WeightUiState(
                 snapshot = weight.snapshot,
                 stats = weight.stats,
@@ -99,6 +106,8 @@ class WeightViewModel(application: Application) : AndroidViewModel(application) 
                     nutrition = nutrition,
                     today = FatSecretDate.today(),
                 ),
+                isSyncing = nutritionState.snapshot.syncStatus == SyncStatus.LOADING,
+                accountConnected = nutritionState.snapshot.connected,
             )
         }.stateIn(
             scope = viewModelScope,

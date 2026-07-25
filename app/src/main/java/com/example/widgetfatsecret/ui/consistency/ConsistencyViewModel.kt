@@ -9,6 +9,7 @@ import com.example.widgetfatsecret.fatsecret.domain.FatSecretDate
 import com.example.widgetfatsecret.fatsecret.domain.history.ConsistencyCalculator
 import com.example.widgetfatsecret.fatsecret.domain.history.ConsistencySummary
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
@@ -30,6 +31,8 @@ data class ConsistencyUiState(
     val month: YearMonth = YearMonth.from(LocalDate.ofEpochDay(0L)),
     val monthSummary: ConsistencySummary = EMPTY_SUMMARY,
     val rollingSummary: ConsistencySummary = EMPTY_SUMMARY,
+    val historyAvailable: Boolean = false,
+    val isRefreshing: Boolean = true,
 )
 
 class ConsistencyViewModel(application: Application) : AndroidViewModel(application) {
@@ -37,13 +40,26 @@ class ConsistencyViewModel(application: Application) : AndroidViewModel(applicat
     private val container = AppContainer.get(application)
     private val repo = container.repository
     private val historyRepo = container.historyRepository
+    private val isRefreshing = MutableStateFlow(false)
 
     init {
-        viewModelScope.launch { historyRepo.refresh() }
+        refresh()
+    }
+
+    fun refresh() {
+        if (isRefreshing.value) return
+        viewModelScope.launch {
+            isRefreshing.value = true
+            try {
+                historyRepo.refresh()
+            } finally {
+                isRefreshing.value = false
+            }
+        }
     }
 
     val uiState: StateFlow<ConsistencyUiState> =
-        combine(repo.uiState, historyRepo.historyFlow) { ui, history ->
+        combine(repo.uiState, historyRepo.historyFlow, isRefreshing) { ui, history, refreshing ->
             val today = FatSecretDate.today()
             val todayDate = LocalDate.ofEpochDay(today)
             val month = YearMonth.from(todayDate)
@@ -66,6 +82,8 @@ class ConsistencyViewModel(application: Application) : AndroidViewModel(applicat
                     windowDays = CONSISTENCY_WINDOW_DAYS,
                     today = today,
                 ),
+                historyAvailable = history.syncedMonths.isNotEmpty() || history.days.isNotEmpty(),
+                isRefreshing = refreshing,
             )
         }.stateIn(
             scope = viewModelScope,

@@ -15,6 +15,7 @@ import com.example.widgetfatsecret.fatsecret.widget.NutritionWidget
 import com.example.widgetfatsecret.fatsecret.widget.WeightWidget
 import com.example.widgetfatsecret.fatsecret.work.SyncScheduler
 import com.example.widgetfatsecret.ui.UiEvent
+import com.example.widgetfatsecret.ui.toUserMessage
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -116,7 +117,7 @@ class AccountViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 is SyncResult.Failure -> {
                     updateWidgets()
-                    _events.emit(UiEvent.Message(messageFor(result.type)))
+                    _events.emit(UiEvent.Message(result.type.toUserMessage()))
                 }
             }
         }
@@ -184,16 +185,5 @@ class AccountViewModel(app: Application) : AndroidViewModel(app) {
         WeightWidget.updateAll(appContext)
     }
 
-    private fun messageFor(type: SyncErrorType): String = when (type) {
-        SyncErrorType.NO_CREDENTIALS -> "Credenciais ausentes. Preencha local.properties."
-        SyncErrorType.NOT_CONNECTED -> "Conta não conectada."
-        SyncErrorType.NETWORK -> "Sem conexão. Tentaremos novamente automaticamente."
-        SyncErrorType.RATE_LIMIT -> "Limite de requisições atingido. Aguarde um pouco."
-        SyncErrorType.SERVER -> "Falha temporária do servidor FatSecret."
-        SyncErrorType.AUTH_INVALID -> "Autorização inválida ou expirada. Reconecte a conta."
-        SyncErrorType.EMPTY -> "Resposta vazia do servidor."
-        SyncErrorType.UNKNOWN -> "Erro inesperado ao sincronizar."
-    }
-
-    fun messageForPublic(type: SyncErrorType): String = messageFor(type)
+    fun messageForPublic(type: SyncErrorType): String = type.toUserMessage()
 }

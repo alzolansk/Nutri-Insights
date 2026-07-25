@@ -25,8 +25,6 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.widgetfatsecret.fatsecret.data.SyncStatus as DataSyncStatus
-import com.example.widgetfatsecret.fatsecret.data.WeightSnapshot
 import com.example.widgetfatsecret.fatsecret.domain.NutritionFormat
 import com.example.widgetfatsecret.fatsecret.domain.WeightEntry
 import com.example.widgetfatsecret.fatsecret.domain.WeightFormat
@@ -37,9 +35,12 @@ import com.example.widgetfatsecret.ui.design.GoalRing
 import com.example.widgetfatsecret.ui.design.MetaChip
 import com.example.widgetfatsecret.ui.design.MetricValue
 import com.example.widgetfatsecret.ui.design.NutriSpacing
+import com.example.widgetfatsecret.ui.design.ScreenSkeleton
 import com.example.widgetfatsecret.ui.design.StatCard
-import com.example.widgetfatsecret.ui.design.SyncStatus
 import com.example.widgetfatsecret.ui.design.SyncStatusChip
+import com.example.widgetfatsecret.ui.ContentState
+import com.example.widgetfatsecret.ui.toChipStatus
+import com.example.widgetfatsecret.ui.toContentState
 import com.example.widgetfatsecret.ui.theme.MonoText
 import com.example.widgetfatsecret.ui.theme.nutriColors
 import java.time.LocalDate
@@ -48,14 +49,34 @@ import java.util.Locale
 import kotlin.math.abs
 
 @Composable
-fun WeightRoute(modifier: Modifier = Modifier, viewModel: WeightViewModel = viewModel()) {
+fun WeightRoute(
+    modifier: Modifier = Modifier,
+    viewModel: WeightViewModel = viewModel(),
+    onSync: (() -> Unit)? = null,
+) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    WeightScreen(state = state, modifier = modifier)
+    WeightScreen(
+        state = state,
+        onSync = {
+            viewModel.refreshHistory()
+            onSync?.invoke()
+        },
+        modifier = modifier,
+    )
 }
 
 @Composable
-fun WeightScreen(state: WeightUiState, modifier: Modifier = Modifier) {
+fun WeightScreen(
+    state: WeightUiState,
+    modifier: Modifier = Modifier,
+    onSync: (() -> Unit)? = null,
+) {
     val snapshot = state.snapshot
+    val accountConnected = state.accountConnected || snapshot.connected
+    val contentState = snapshot.toContentState(
+        connected = accountConnected,
+        loading = state.isSyncing,
+    )
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -64,31 +85,44 @@ fun WeightScreen(state: WeightUiState, modifier: Modifier = Modifier) {
         verticalArrangement = Arrangement.spacedBy(NutriSpacing.lg),
     ) {
         SyncStatusChip(
-            status = snapshot.toChipStatus(),
+            status = snapshot.toChipStatus(
+                connected = accountConnected,
+                loading = state.isSyncing,
+            ),
             detail = snapshot.lastSyncMillis.takeIf { it > 0 }?.let { NutritionFormat.timeAgo(it) },
         )
 
-        when {
-            !snapshot.connected -> EmptyState(
+        when (contentState) {
+            ContentState.DISCONNECTED -> EmptyState(
                 title = "Conta desconectada",
                 description = "Conecte sua conta em Metas e conta para ver seu histórico de peso.",
             )
-            !state.stats.hasData -> EmptyState(
-                title = "Sem pesagens",
-                description = "Ainda não há pesagens disponíveis na conta sincronizada.",
+            ContentState.LOADING -> ScreenSkeleton(weightSkeletonHeights)
+            ContentState.NOT_SYNCED -> {
+                EmptyState(
+                    title = "Peso ainda não sincronizado",
+                    description = "Nenhuma pesagem foi trazida para este aparelho ainda.",
+                    actionLabel = "Sincronizar agora",
+                    onAction = onSync,
+                )
+                ScreenSkeleton(weightSkeletonHeights)
+            }
+            ContentState.SYNC_ERROR -> EmptyState(
+                title = "Falha na sincronização",
+                description = "Não foi possível trazer as pesagens. Tente novamente; uma autorização expirada deve ser reconectada em Metas e conta.",
+                actionLabel = "Tentar novamente",
+                onAction = onSync,
             )
-            else -> WeightContent(state)
+            ContentState.EMPTY -> EmptyState(
+                title = "Sem pesagens",
+                description = "A conta foi sincronizada e não há pesagens disponíveis. Ausência não é peso zero.",
+            )
+            ContentState.CONTENT -> WeightContent(state)
         }
     }
 }
 
-private fun WeightSnapshot.toChipStatus(): SyncStatus = when {
-    !connected -> SyncStatus.DISCONNECTED
-    syncStatus == DataSyncStatus.LOADING -> SyncStatus.SYNCING
-    syncStatus == DataSyncStatus.ERROR && hasValidData -> SyncStatus.OFFLINE
-    syncStatus == DataSyncStatus.ERROR -> SyncStatus.ERROR
-    else -> SyncStatus.SYNCED
-}
+private val weightSkeletonHeights = listOf(190.dp, 180.dp, 330.dp, 240.dp)
 
 @Composable
 private fun WeightContent(state: WeightUiState) {

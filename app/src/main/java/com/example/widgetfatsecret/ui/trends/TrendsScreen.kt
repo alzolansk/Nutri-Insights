@@ -13,10 +13,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.widgetfatsecret.fatsecret.data.NutritionSnapshot
-import com.example.widgetfatsecret.fatsecret.data.SyncStatus as DataSyncStatus
 import com.example.widgetfatsecret.fatsecret.domain.NutritionFormat
 import com.example.widgetfatsecret.fatsecret.domain.history.CalorieDistribution
 import com.example.widgetfatsecret.fatsecret.domain.history.TrendSummary
@@ -26,9 +25,13 @@ import com.example.widgetfatsecret.ui.design.EmptyState
 import com.example.widgetfatsecret.ui.design.MetaChip
 import com.example.widgetfatsecret.ui.design.MetricValue
 import com.example.widgetfatsecret.ui.design.NutriSpacing
+import com.example.widgetfatsecret.ui.design.ScreenSkeleton
 import com.example.widgetfatsecret.ui.design.StatCard
-import com.example.widgetfatsecret.ui.design.SyncStatus
 import com.example.widgetfatsecret.ui.design.SyncStatusChip
+import com.example.widgetfatsecret.ui.ContentState
+import com.example.widgetfatsecret.ui.toChipStatus
+import com.example.widgetfatsecret.ui.toContentState
+import com.example.widgetfatsecret.ui.toUserMessage
 import com.example.widgetfatsecret.ui.theme.MonoText
 import com.example.widgetfatsecret.ui.theme.nutriColors
 import kotlin.math.abs
@@ -40,9 +43,20 @@ import kotlin.math.roundToInt
  * Etapa 6).
  */
 @Composable
-fun TrendsRoute(modifier: Modifier = Modifier, viewModel: TrendsViewModel = viewModel()) {
+fun TrendsRoute(
+    modifier: Modifier = Modifier,
+    viewModel: TrendsViewModel = viewModel(),
+    onSync: (() -> Unit)? = null,
+) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    TrendsScreen(state = state, modifier = modifier)
+    TrendsScreen(
+        state = state,
+        onSync = {
+            viewModel.refresh()
+            onSync?.invoke()
+        },
+        modifier = modifier,
+    )
 }
 
 /**
@@ -52,8 +66,17 @@ fun TrendsRoute(modifier: Modifier = Modifier, viewModel: TrendsViewModel = view
  * "padrão mensurável, nunca julgamento").
  */
 @Composable
-fun TrendsScreen(state: TrendsUiState, modifier: Modifier = Modifier) {
+fun TrendsScreen(
+    state: TrendsUiState,
+    modifier: Modifier = Modifier,
+    onSync: (() -> Unit)? = null,
+) {
     val snapshot = state.snapshot
+    val contentState = snapshot.toContentState(
+        hasUsableData = state.historyAvailable,
+        hasRecords = state.trend30.daysRecorded > 0,
+        loading = state.isRefreshing && !state.historyAvailable,
+    )
 
     Column(
         modifier = modifier
@@ -67,13 +90,33 @@ fun TrendsScreen(state: TrendsUiState, modifier: Modifier = Modifier) {
             detail = snapshot.lastSyncMillis.takeIf { it > 0 }?.let { NutritionFormat.timeAgo(it) },
         )
 
-        when {
-            !snapshot.connected -> EmptyState(
-                icon = "🔌",
+        when (contentState) {
+            ContentState.DISCONNECTED -> EmptyState(
                 title = "Conta desconectada",
                 description = "Conecte sua conta na aba Metas e conta para ver as tendências de calorias.",
             )
-            else -> {
+            ContentState.LOADING -> ScreenSkeleton(trendsSkeletonHeights)
+            ContentState.NOT_SYNCED -> {
+                EmptyState(
+                    title = "Histórico ainda não sincronizado",
+                    description = "Nenhum período foi trazido para este aparelho ainda.",
+                    actionLabel = "Sincronizar agora",
+                    onAction = onSync,
+                )
+                ScreenSkeleton(trendsSkeletonHeights)
+            }
+            ContentState.SYNC_ERROR -> EmptyState(
+                title = "Falha na sincronização",
+                description = snapshot.errorType?.toUserMessage()
+                    ?: "Não foi possível trazer o histórico. Tente sincronizar novamente.",
+                actionLabel = "Tentar novamente",
+                onAction = onSync,
+            )
+            ContentState.EMPTY -> EmptyState(
+                title = "Sem registros no período",
+                description = "O período foi sincronizado e não há dias com entradas. Ausência não é consumo zero.",
+            )
+            ContentState.CONTENT -> {
                 WindowCard(title = "7 dias", summary = state.trend7)
                 WindowCard(title = "14 dias", summary = state.trend14)
                 WindowCard(title = "30 dias", summary = state.trend30)
@@ -84,13 +127,7 @@ fun TrendsScreen(state: TrendsUiState, modifier: Modifier = Modifier) {
     }
 }
 
-private fun NutritionSnapshot.toChipStatus(): SyncStatus = when {
-    !connected -> SyncStatus.DISCONNECTED
-    syncStatus == DataSyncStatus.LOADING -> SyncStatus.SYNCING
-    syncStatus == DataSyncStatus.ERROR && hasValidData -> SyncStatus.OFFLINE
-    syncStatus == DataSyncStatus.ERROR -> SyncStatus.ERROR
-    else -> SyncStatus.SYNCED
-}
+private val trendsSkeletonHeights = listOf(150.dp, 150.dp, 150.dp, 236.dp, 160.dp)
 
 @Composable
 private fun WindowCard(title: String, summary: TrendSummary) {
@@ -100,11 +137,11 @@ private fun WindowCard(title: String, summary: TrendSummary) {
         meta = "${summary.daysRecorded} de ${summary.windowDays} dias",
     ) {
         if (!summary.hasEnoughData) {
-            Text(
-                "Dados insuficientes — são necessários ao menos ${TrendSummary.MIN_RECORDED_DAYS} dias " +
-                    "registrados nesta janela.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = colors.text2,
+            EmptyState(
+                title = "Dados insuficientes",
+                description = "São necessários ao menos ${TrendSummary.MIN_RECORDED_DAYS} dias " +
+                    "registrados nesta janela. Você tem ${summary.daysRecorded}.",
+                contentPadding = 0.dp,
             )
         } else {
             Row(
