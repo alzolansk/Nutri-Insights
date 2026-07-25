@@ -33,6 +33,7 @@ import androidx.navigation.compose.rememberNavController
 import com.example.widgetfatsecret.ui.account.AccountViewModel
 import com.example.widgetfatsecret.ui.account.GoalsAccountRoute
 import com.example.widgetfatsecret.ui.design.EmptyState
+import com.example.widgetfatsecret.ui.patterns.PatternsRoute
 import com.example.widgetfatsecret.ui.theme.nutriColors
 import com.example.widgetfatsecret.ui.today.TodayRoute
 import com.example.widgetfatsecret.ui.trends.TrendsRoute
@@ -44,8 +45,8 @@ import com.example.widgetfatsecret.ui.trends.TrendsRoute
  * conta` desde a Etapa 5 ([GoalsAccountRoute]); as demais rotas mostram um
  * placeholder até as Etapas 6-9. O NavHost não sabe nada sobre OAuth: o deep
  * link continua tratado pela Activity (planning.md §6, item 4). `Tendências` tem
- * conteúdo real desde a Etapa 6 ([TrendsRoute]); as demais rotas mostram um
- * placeholder até as Etapas 7-9.
+ * conteúdo real desde a Etapa 6 ([TrendsRoute]) e `Padrões` desde a Etapa 7
+ * ([PatternsRoute]); as demais rotas mostram um placeholder até as Etapas 8-9.
  *
  * [accountViewModel] é recebido de fora (não resolvido aqui com `viewModel()`)
  * porque precisa ser a MESMA instância que a Activity usa para tratar o
@@ -88,10 +89,7 @@ fun AppShell(accountViewModel: AccountViewModel, modifier: Modifier = Modifier) 
                 TrendsRoute()
             }
             composable<Route.Padroes> {
-                PlaceholderScreen(
-                    title = "Padrões",
-                    description = "Padrões por dia da semana e a folha de metodologia chegam na Etapa 7.",
-                )
+                PatternsRoute()
             }
             composable<Route.Consistencia> {
                 PlaceholderScreen(

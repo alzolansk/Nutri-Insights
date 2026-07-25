@@ -1,6 +1,6 @@
 # Plano de Evolução — WidgetFatSecret → Nutri Insights
 
-> **Status:** Etapas 0, 1, 2, 3, 4, 5 e 6 implementadas (ver §9). Etapas 7–11
+> **Status:** Etapas 0, 1, 2, 3, 4, 5, 6 e 7 implementadas (ver §9). Etapas 8–11
 > seguem apenas planejadas, aguardando aprovação para prosseguir.
 > **Premissa central:** os widgets de tela inicial são o que já funciona hoje e são
 > intocáveis. Toda a evolução é **aditiva** — nada da infraestrutura atual é removido
@@ -634,7 +634,7 @@ Etapa 11 Remoção do legado
 
 ---
 
-### Etapa 7 — Padrões
+### Etapa 7 — Padrões ✅ concluída (2026-07-25)
 
 - **Objetivo:** padrões observados (dia, ciclo, macro, refeição), média por dia da
   semana, frequência fora da meta, e a **folha de metodologia** de cada insight.
@@ -648,6 +648,34 @@ Etapa 11 Remoção do legado
   sincronização detalhada — caso contrário, estado explicativo.
 - **Build e testes:** `:app:testDebugUnitTest` (agrupamento por dia da semana com
   amostra pequena; contagem "X de Y dias"), `:app:assembleDebug`.
+- **Status real:** implementado.
+  [`ui/patterns/PatternsViewModel.kt`](app/src/main/java/com/example/widgetfatsecret/ui/patterns/PatternsViewModel.kt)
+  combina o snapshot/metas com o histórico e calcula uma janela fixa de 28 dias:
+  médias de segunda a domingo, ciclo dias úteis × fim de semana e frequências de
+  calorias/proteína/carboidratos/gorduras abaixo/perto/acima da faixa de ±5% das
+  metas locais. `PatternCalculator` foi ampliado apenas com funções puras e tipos
+  aditivos (`weeklyCycle`, `goalFrequency`, `WeeklyCycleSummary`, `GoalFrequency`);
+  dias ausentes continuam fora de qualquer média ou frequência e metas não
+  positivas não classificam nenhum dia.
+  [`ui/patterns/PatternsScreen.kt`](app/src/main/java/com/example/widgetfatsecret/ui/patterns/PatternsScreen.kt)
+  mostra o `SyncStatusChip`, a tabela auditável de médias por dia da semana e
+  quatro superfícies descritivas: maior média por dia, ciclo semanal, frequência
+  em relação à meta calórica e padrão de macro. Todo insight calculado abre
+  [`MethodologySheet.kt`](app/src/main/java/com/example/widgetfatsecret/ui/patterns/MethodologySheet.kt)
+  com janela, número de dias registrados, regra de cálculo e limitação do dado.
+  A análise histórica por refeição não é inferida a partir do breakdown de hoje:
+  aparece como estado explicativo "DADO NÃO DISPONÍVEL" até existir sincronização
+  detalhada. Nenhum alimento individual, micronutriente, score ou conselho foi
+  introduzido. A rota `Padroes` do `AppShell` trocou o placeholder pela tela real.
+  `PatternCalculatorTest` ganhou 3 testes cobrindo ciclo com amostra pequena,
+  contagem `X de Y` sem transformar lacunas em zero e meta não positiva.
+  `:app:testDebugUnitTest` (**82 testes, 0 falhas**) e `:app:assembleDebug` verdes.
+  Tela e folha de metodologia validadas no `emulator-5554` com 21 dias reais na
+  janela; sem crash/erro em log. **Nenhum widget, receiver, manifesto, DataStore
+  existente, `MainActivity` ou `AppContainer.syncAndRefresh()` foi tocado** e a
+  regra de ouro (0 imports de `ui.*` em `fatsecret/`) foi reverificada. O checklist
+  manual completo de `docs/widget-smoke-test.md` continua fora do escopo desta
+  validação de tela e deve ser reexecutado quando necessário.
 
 ---
 

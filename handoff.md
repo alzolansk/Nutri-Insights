@@ -2,19 +2,24 @@
 
 Atualizado em: 2026-07-25
 
-> **Nota de sessão (2026-07-25, 13ª parte) — LEIA PRIMEIRO:** a **Etapa 6 —
-> Tendências** do `planning.md` foi implementada. A aba "Tendências" agora
-> mostra médias de 7/14/30 dias com variação vs. o período anterior, um
-> gráfico de calorias de 30 dias com a linha de meta, e a distribuição
-> acima/perto/abaixo da meta — tudo derivado do `HistoryRepository` (Etapa 1),
-> que ganhou seu primeiro chamador de `refresh()` nesta sessão. **A frente de
+> **Nota de sessão (2026-07-25, 14ª parte) — LEIA PRIMEIRO:** a **Etapa 7 —
+> Padrões** do `planning.md` foi implementada. A aba "Padrões" agora mostra
+> médias por dia da semana, ciclo dias úteis × fim de semana, frequências em
+> relação às metas e uma folha de metodologia auditável para cada insight. A
+> análise por refeição permanece explicitamente indisponível sem sincronização
+> detalhada; nenhum dado de hoje é projetado sobre o histórico. **A frente de
 > trabalho ativa continua sendo `planning.md`, não as seções 1–19 abaixo**
 > (histórico de ajustes dos widgets, ainda válido como referência). Próxima
-> etapa: **Etapa 7 — Padrões**. Detalhes desta sessão na seção 25. Etapas 0–1
+> etapa: **Etapa 8 — Consistência**. Detalhes desta sessão na seção 26. Etapas 0–1
 > na seção 20; Etapa 2 na seção 21; Etapa 3 na seção 22; Etapa 4 na seção 23;
 > Etapa 5 na seção 24 (inclui uma pendência de reverificação manual do ciclo
 > "editar meta → Salvar → widget/Hoje atualizam juntos" por flakiness do ADB
-> no emulador usado naquela sessão, não por falha observada no código).
+> no emulador usado naquela sessão, não por falha observada no código); Etapa 6
+> na seção 25.
+>
+> Nota de sessão (2026-07-25, 13ª parte): a **Etapa 6 — Tendências** do
+> `planning.md` foi implementada. A aba mostra médias de 7/14/30 dias, gráfico
+> de 30 dias e distribuição acima/perto/abaixo da meta. Detalhes na seção 25.
 >
 > Nota de sessão (2026-07-25, 10ª parte): a **Etapa 3 — casca de navegação** do
 > `planning.md` foi implementada. `MainActivity` agora abre, por padrão, o novo
@@ -1492,3 +1497,82 @@ Etapa 7 — Padrões (planning.md §9): padrões por dia da semana (já existe
 meta, e a folha de metodologia (`MethodologySheet`) exigida para todo insight
 — nenhum insight sobre alimentos individuais ou micronutrientes, conforme o
 escopo negativo do deck.
+
+## 26. Sessão 2026-07-25 (14ª parte) — Etapa 7: Padrões
+
+### Objetivo da sessão
+
+Implementar somente a **Etapa 7 — Padrões** do `planning.md`: padrões por dia,
+ciclo semanal, macro e frequência em relação às metas, com uma folha de
+metodologia para cada afirmação calculada. As Etapas 0–6 foram tratadas como
+concluídas e preservadas. O `assets/design.md` foi seguido nas novas superfícies:
+paleta/tipografia/componentes existentes, conteúdo descritivo, sem gradiente,
+emoji, julgamento, alimento individual, micronutriente, score ou conselho.
+
+### Camada de cálculo
+
+- [`PatternCalculator.kt`](app/src/main/java/com/example/widgetfatsecret/fatsecret/domain/history/PatternCalculator.kt)
+  manteve `summarize()` e ganhou funções puras aditivas:
+  - `weeklyCycle()` separa segunda–sexta de sábado–domingo, calcula médias
+    ponderadas pelos dias realmente registrados e expõe a amostra de cada parte;
+  - `goalFrequency()` conta dias abaixo/perto/acima de uma faixa explícita de
+    ±5% da meta para calorias, proteína, carboidratos e gorduras;
+  - metas ≤ 0 retornam contagens vazias; dias ausentes nunca entram como zero;
+  - `PatternSummary.hasEnoughData` exige 4 dias na janela e
+    `WeeklyCycleSummary.hasEnoughData` exige 2 dias em cada parte do ciclo.
+- [`PatternsViewModel.kt`](app/src/main/java/com/example/widgetfatsecret/ui/patterns/PatternsViewModel.kt)
+  combina `repository.uiState` (snapshot + metas locais) com
+  `historyRepository.daysFlow`, sempre sobre uma janela fixa de 28 dias. O
+  `HistoryRepository.refresh()` é chamado uma vez por instância da aba, no
+  `viewModelScope`, independente de `AppContainer.syncAndRefresh()` e dos
+  widgets — o mesmo isolamento de quota estabelecido pela Etapa 6.
+
+### Interface e metodologia
+
+- [`PatternsScreen.kt`](app/src/main/java/com/example/widgetfatsecret/ui/patterns/PatternsScreen.kt)
+  mostra:
+  - `SyncStatusChip` sempre visível;
+  - `StatCard` com as sete médias (segunda a domingo), valor e amostra por dia;
+  - insight do dia com maior média, deixando explícita a amostra daquele dia;
+  - comparação descritiva entre dias úteis e fim de semana;
+  - frequência de calorias fora da faixa de ±5% da meta (`X de Y`, percentual);
+  - um padrão direcional de macro, também com `X de Y` e percentual;
+  - estado "DADO NÃO DISPONÍVEL" para refeições históricas. O breakdown de
+    refeições de hoje não é reutilizado como se representasse quatro semanas.
+- Todo card que faz uma afirmação calculada é tocável e abre
+  [`MethodologySheet.kt`](app/src/main/java/com/example/widgetfatsecret/ui/patterns/MethodologySheet.kt).
+  A folha sempre mostra os quatro campos exigidos no plano: janela analisada,
+  dias registrados, regra de cálculo e limitação do dado. Cards de dados
+  insuficientes e o estado de refeições não fingem ser insights e, por isso,
+  não abrem metodologia.
+- `ui/navigation/AppShell.kt`: `Route.Padroes` trocou o placeholder por
+  `PatternsRoute()`. Nenhuma outra rota mudou de comportamento.
+
+### Testes e validação
+
+- `PatternCalculatorTest` ganhou 3 testes:
+  - ciclo semanal com amostra pequena e contagem separada por parte;
+  - frequência `X de Y dias` com uma lacuna e um registro fora da janela;
+  - meta não positiva não classifica dias registrados.
+- `JAVA_HOME='C:\Program Files\Android\Android Studio\jbr' .\gradlew.bat
+  :app:testDebugUnitTest :app:assembleDebug` → **BUILD SUCCESSFUL**.
+  **82 testes JVM, 0 falhas** (79 anteriores + 3 novos).
+- APK instalado no `emulator-5554`. A aba foi validada com dados reais:
+  21 de 28 dias registrados, sete médias renderizadas, ciclo semanal,
+  frequência calórica, padrão de proteína e o estado explicativo de refeições.
+  A folha de metodologia foi aberta e inspecionada com janela, amostra, regra e
+  limitação completas. Um conflito visual de título/metadado encontrado nessa
+  inspeção foi removido antes da validação final. Nenhum erro `AndroidRuntime`
+  apareceu no trecho de logcat inspecionado.
+- Nenhum arquivo de widget/receiver, manifesto, DataStore existente,
+  `MainActivity` ou `AppContainer.syncAndRefresh()` foi alterado. A regra de ouro
+  foi reverificada: nenhum import de `ui.*` em `fatsecret/`.
+
+### Pendências e próximo passo
+
+- O checklist manual completo de `docs/widget-smoke-test.md` não foi reexecutado;
+  a Etapa 7 não altera a infraestrutura ou o layout dos widgets.
+- A sincronização detalhada de refeições históricas continua fora de escopo. A
+  tela comunica essa limitação em vez de inferir dados inexistentes.
+- Próximo passo autorizado pelo plano, mas **não implementado nesta sessão**:
+  Etapa 8 — Consistência.

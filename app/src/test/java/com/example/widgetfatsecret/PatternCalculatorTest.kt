@@ -2,6 +2,7 @@ package com.example.widgetfatsecret
 
 import com.example.widgetfatsecret.fatsecret.data.DayNutrition
 import com.example.widgetfatsecret.fatsecret.domain.history.PatternCalculator
+import com.example.widgetfatsecret.fatsecret.domain.history.PatternMetric
 import java.time.DayOfWeek
 import java.time.LocalDate
 import org.junit.Assert.assertEquals
@@ -45,5 +46,61 @@ class PatternCalculatorTest {
         val history = listOf(day(50, 2000.0), day(100, 2200.0))
         val s = PatternCalculator.summarize(history, windowDays = 7, today = 100)
         assertEquals(1, s.daysRecorded) // day 50 is far outside a 7-day window ending at 100
+    }
+
+    @Test
+    fun weeklyCycleKeepsSmallSamplesAndReportsEachSampleSize() {
+        val monday = LocalDate.of(2026, 7, 6).toEpochDay()
+        val history = listOf(
+            day(monday, 1800.0),
+            day(monday + 1, 2000.0),
+            day(monday + 5, 2400.0),
+        )
+
+        val cycle = PatternCalculator.weeklyCycle(history, windowDays = 7, today = monday + 6)
+
+        assertEquals(2, cycle.weekdays.daysRecorded)
+        assertEquals(1900.0, cycle.weekdays.averageCalories!!, 0.001)
+        assertEquals(1, cycle.weekend.daysRecorded)
+        assertEquals(2400.0, cycle.weekend.averageCalories!!, 0.001)
+        assertEquals(500.0, cycle.differenceCalories!!, 0.001)
+        assertEquals(false, cycle.hasEnoughData)
+    }
+
+    @Test
+    fun goalFrequencyCountsXOfYRecordedDaysAndSkipsWindowGaps() {
+        val history = listOf(
+            DayNutrition(97, calories = 1800.0, protein = 80.0, carbs = 0.0, fat = 0.0),
+            DayNutrition(98, calories = 2000.0, protein = 100.0, carbs = 0.0, fat = 0.0),
+            DayNutrition(100, calories = 2200.0, protein = 120.0, carbs = 0.0, fat = 0.0),
+            DayNutrition(50, calories = 9000.0, protein = 900.0, carbs = 0.0, fat = 0.0),
+        )
+
+        val frequency = PatternCalculator.goalFrequency(
+            history = history,
+            windowDays = 7,
+            today = 100,
+            metric = PatternMetric.PROTEIN,
+            goal = 100.0,
+        )
+
+        assertEquals(1, frequency.below)
+        assertEquals(1, frequency.near)
+        assertEquals(1, frequency.above)
+        assertEquals(2, frequency.outside)
+        assertEquals(3, frequency.daysRecorded)
+    }
+
+    @Test
+    fun nonPositiveGoalDoesNotClassifyRecordedDays() {
+        val frequency = PatternCalculator.goalFrequency(
+            history = listOf(day(100, 2000.0)),
+            windowDays = 7,
+            today = 100,
+            metric = PatternMetric.CALORIES,
+            goal = 0.0,
+        )
+
+        assertEquals(0, frequency.daysRecorded)
     }
 }
