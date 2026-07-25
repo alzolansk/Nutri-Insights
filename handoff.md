@@ -2,17 +2,19 @@
 
 Atualizado em: 2026-07-25
 
-> **Nota de sessão (2026-07-25, 9ª parte) — LEIA PRIMEIRO:** o projeto entrou
-> numa fase nova. Existe um `planning.md` na raiz com o plano completo de
-> evolução para "Nutri Insights" (app com navegação por abas, mantendo os
-> widgets intocados). As Etapas 0, 1 e **2** (design system) do plano já foram
-> implementadas. **A frente de trabalho ativa a partir de agora é `planning.md`,
-> não as seções 1–19 abaixo** (que documentam o histórico de ajuste dos widgets
-> e continuam válidas como referência de decisões passadas, mas não são mais o
-> próximo passo). A próxima etapa é a **Etapa 3 — casca de navegação**, que é a
-> primeira a tocar em UI real (`MainActivity`) — antes dela, rodar o checklist
-> manual de fumaça dos widgets (`docs/widget-smoke-test.md`). Etapas 0–1 na
-> seção 20; Etapa 2 na seção 21.
+> **Nota de sessão (2026-07-25, 10ª parte) — LEIA PRIMEIRO:** a **Etapa 3 —
+> casca de navegação** do `planning.md` foi implementada. `MainActivity` agora
+> abre, por padrão, o novo `AppShell` (5 abas + Metas/Conta, todas placeholder
+> ainda) em vez da UI antiga; a UI antiga continua no projeto, alcançável
+> recompilando com `USE_LEGACY_UI = true` em `MainActivity.kt`. **A frente de
+> trabalho ativa continua sendo `planning.md`, não as seções 1–19 abaixo**
+> (histórico de ajustes dos widgets, ainda válido como referência). Próxima
+> etapa: **Etapa 4 — Tela Hoje**. Detalhes desta sessão na seção 22. Etapas
+> 0–1 na seção 20; Etapa 2 na seção 21.
+>
+> Nota de sessão (2026-07-25, 9ª parte): Etapas 0, 1 e 2 do `planning.md`
+> implementadas (rede de segurança, camada de histórico, design system).
+> Detalhes nas seções 20 e 21.
 >
 > Nota de sessão (2026-07-25): além da redução do widget para uma linha
 > (sessão anterior), foi adicionado o **gráfico semanal de calorias** no widget
@@ -1001,3 +1003,117 @@ Atualizados: `planning.md` (Etapa 2 marcada ✅ + "Status real"), `handoff.md`
 - **Próximo passo:** Etapa 3 (casca de navegação: `AppShell` + `NavHost` de 6
   rotas + `navigation-compose`), mantendo `MainActivity`/manifesto/`onNewIntent`
   intocados e a UI antiga atrás da flag `USE_LEGACY_UI`.
+
+---
+
+## 22. Sessão 2026-07-25 (10ª parte) — Etapa 3 do planning.md: casca de navegação
+
+### Contexto
+
+Continuação direta da seção 21. As Etapas 0, 1 e 2 já estavam feitas. Esta
+sessão implementou a **Etapa 3 — casca de navegação**: a primeira etapa que
+toca em UI real (`MainActivity`) e em código executado em runtime pelo app
+(não só previews). Por isso o cuidado adicional em preservar literalmente o
+que os dois widgets dependem — nada em `fatsecret/`, no manifesto ou nos
+DataStores foi tocado.
+
+### O que foi feito
+
+- **`gradle/libs.versions.toml` / `app/build.gradle.kts`:** adicionada a
+  dependência `androidx.navigation:navigation-compose:2.8.9`. A versão que já
+  estava em cache local era 2.7.7 (sem suporte a rotas tipadas); como havia
+  rede disponível nesta sessão, a versão foi resolvida para 2.8.9 para poder
+  usar rotas tipadas com `kotlinx.serialization` (o plugin já estava aplicado
+  ao módulo). Nenhuma dependência usada pelos widgets foi tocada (risco R9).
+- **[`ui/navigation/Routes.kt`](app/src/main/java/com/example/widgetfatsecret/ui/navigation/Routes.kt)**
+  (novo): `sealed interface Route` com 6 `@Serializable data object` —
+  `Hoje`, `Tendencias`, `Padroes`, `Consistencia`, `Peso`, `MetasConta` — e a
+  lista `bottomTabs` com as 5 abas visíveis na barra (Metas/Conta fica fora da
+  barra, aberta pelo avatar no topo).
+- **[`ui/navigation/AppShell.kt`](app/src/main/java/com/example/widgetfatsecret/ui/navigation/AppShell.kt)**
+  (novo): `Scaffold` com `TopAppBar` (título "Nutri Insights" + avatar
+  circular clicável "⚙" que navega para `MetasConta`), `NavigationBar` de 5
+  abas (oculta quando a rota atual é `MetasConta`) e um `NavHost` com as 6
+  rotas, cada uma mostrando o componente `EmptyState` da Etapa 2 com uma frase
+  dizendo qual etapa futura vai preencher aquela tela. Sem ícones de
+  `material-icons-extended` (dependência inexistente no projeto) — cada aba
+  usa a primeira letra do nome como "ícone" textual, coerente com a regra do
+  slide 4 (nenhum estado depende só de cor/ícone, sempre tem rótulo).
+- **`MainActivity.kt`:** só o corpo do `setContent` mudou, como o plano exige.
+  A classe, `onNewIntent`, `launchMode="singleTask"`, `callbackUri` e
+  `enableEdgeToEdge()` continuam idênticos. O tratamento do deep link OAuth e
+  dos eventos do ViewModel (que antes vivia dentro de `AppRoot`) foi extraído
+  para um composable `OAuthCallbackAndEventEffects(vm, callbackUri)`, chamado
+  **uma vez**, direto no `setContent`, **antes** de decidir qual UI mostrar —
+  assim o fluxo OAuth completo (conectar → navegador → deep link →
+  `handleCallback` → sync) continua funcionando de forma idêntica
+  independentemente de `USE_LEGACY_UI`. `AppRoot` (a UI antiga) foi preservada
+  literalmente, só perdendo o parâmetro `callbackUri` (que subiu de nível).
+- **Flag `USE_LEGACY_UI`:** `private const val USE_LEGACY_UI = false` no topo
+  de `MainActivity.kt`. `false` = `AppShell` (novo) é o padrão. Alternar para
+  `true` e recompilar volta à UI antiga inteira, como rede de segurança —
+  exatamente o mecanismo descrito em planning.md §6, item 6.
+
+### Por que o fluxo OAuth não quebrou mesmo com placeholder em Metas/Conta
+
+A rota `MetasConta` desta etapa é só um `EmptyState` — não tem botão de
+conectar. Isso é esperado (a Etapa 5 é quem migra o `connect()`/`disconnect()`
+de verdade). O que a Etapa 3 preserva é a **infraestrutura**: a Activity
+sempre processa `onNewIntent`/`callbackUri` e sempre roda
+`OAuthCallbackAndEventEffects`, não importa qual UI está visível. Testar o
+ciclo completo de conectar nesta etapa exige alternar `USE_LEGACY_UI` para
+`true` (a UI antiga tem o botão), exatamente como o critério de conclusão do
+plano prevê ("com a UI antiga ainda alcançável pela flag").
+
+### Armadilhas de API encontradas (navigation-compose 2.8.9)
+
+- `NavDestination.hasRoute<T>()` (a forma reified, sem argumentos) só resolve
+  se `androidx.navigation.NavDestination.Companion.hasRoute` for importado
+  explicitamente — igual ao `hierarchy`. Sem o import, o Kotlin tenta casar a
+  chamada com o método de instância `hasRoute(route: String, arguments:
+  Bundle?)` e falha com "no value passed for parameter route/arguments" (erro
+  enganoso, não é problema de tipo genérico).
+- `NutriColors` (Etapa 2) usa a propriedade `bg`, não `background`. Escrever
+  `colors.background` compila para outra coisa (o Kotlin tenta resolver contra
+  a extensão `Modifier.background(...)` importada no arquivo) e produz um erro
+  de tipo confuso ("Modifier onde Color era esperado"), não um "unresolved
+  reference". Vale conferir o nome exato da propriedade em `Theme.kt` antes de
+  usar `MaterialTheme.nutriColors.*`.
+
+### Testes e validação
+
+- `./gradlew :app:testDebugUnitTest` → **68 testes, 0 falhas** (inalterados —
+  nenhum teste novo nesta etapa, é puramente UI/navegação sem lógica testável
+  em JVM).
+- `./gradlew :app:assembleDebug` → **BUILD SUCCESSFUL**.
+- `grep -rn "import com.example.widgetfatsecret.ui" .../fatsecret/` → vazio,
+  regra de ouro reconfirmada.
+- **Não validado nesta sessão** (sem dispositivo/emulador neste ambiente):
+  nenhuma verificação visual do `AppShell` nem o checklist manual de
+  `docs/widget-smoke-test.md` (itens 1–12, incluindo o ciclo completo 9–12
+  que esta etapa exige formalmente). Como nenhum widget/receiver/manifesto foi
+  tocado, o risco de regressão nos widgets é baixo — mas confirmar num
+  dispositivo real antes de avançar para a Etapa 5 (primeira vez que a UI nova
+  ganha controles de conta de verdade).
+
+### Arquivos criados/alterados
+
+Criados: `ui/navigation/Routes.kt`, `ui/navigation/AppShell.kt`.
+Alterados: `MainActivity.kt` (só `setContent` + extração de
+`OAuthCallbackAndEventEffects` + flag `USE_LEGACY_UI`), `gradle/libs.versions.toml`,
+`app/build.gradle.kts` (dependência `navigation-compose`), `planning.md`
+(Etapa 3 marcada ✅, cabeçalho de status), `handoff.md` (esta seção + nota de
+topo).
+
+### Pendências desta sessão
+
+- Checklist manual de `docs/widget-smoke-test.md`, incluindo o ciclo completo
+  (itens 9–12) exigido nesta etapa — não executado, sem dispositivo neste
+  ambiente. Mesma pendência já carregada desde a Etapa 0.
+- Nenhum botão de conectar/desconectar/sync na UI nova ainda — chega na
+  Etapa 5. Até lá, quem já tinha token salvo continua sincronizando via
+  worker periódico; quem precisar conectar do zero deve usar
+  `USE_LEGACY_UI = true` temporariamente.
+- **Próximo passo:** Etapa 4 — Tela Hoje (planning.md §9), consumindo
+  `NutritionSnapshot` via um novo `TodayViewModel` dentro da rota `Hoje` do
+  `AppShell`.

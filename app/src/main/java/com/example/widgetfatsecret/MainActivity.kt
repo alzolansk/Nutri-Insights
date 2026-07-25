@@ -26,8 +26,17 @@ import com.example.widgetfatsecret.ui.FatSecretViewModel
 import com.example.widgetfatsecret.ui.GoalsSettingsScreen
 import com.example.widgetfatsecret.ui.MainScreen
 import com.example.widgetfatsecret.ui.UiEvent
+import com.example.widgetfatsecret.ui.navigation.AppShell
 import com.example.widgetfatsecret.ui.theme.WidgetFatSecretTheme
 import kotlinx.coroutines.flow.collectLatest
+
+/**
+ * Convivência entre a UI antiga (`AppRoot`) e a nova casca de navegação
+ * (`AppShell`, planning.md §9 Etapa 3), enquanto as Etapas 4-11 migram tela
+ * por tela. `false` = a nova UI é a padrão; alterne para `true` (e recompile)
+ * para voltar à UI antiga como rede de segurança. Ver planning.md §6, item 6.
+ */
+private const val USE_LEGACY_UI = false
 
 class MainActivity : ComponentActivity() {
 
@@ -42,7 +51,17 @@ class MainActivity : ComponentActivity() {
         setContent {
             WidgetFatSecretTheme {
                 val vm: FatSecretViewModel = viewModel()
-                AppRoot(vm, callbackUri)
+
+                // Tratamento do deep link OAuth e dos eventos do ViewModel vive
+                // aqui, fora de AppRoot/AppShell, para continuar funcionando
+                // identicamente não importa qual UI está visível (planning.md §6).
+                OAuthCallbackAndEventEffects(vm, callbackUri)
+
+                if (USE_LEGACY_UI) {
+                    AppRoot(vm)
+                } else {
+                    AppShell()
+                }
             }
         }
     }
@@ -57,14 +76,8 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun AppRoot(vm: FatSecretViewModel, callbackUri: MutableState<Uri?>) {
+private fun OAuthCallbackAndEventEffects(vm: FatSecretViewModel, callbackUri: MutableState<Uri?>) {
     val context = LocalContext.current
-    val state by vm.uiState.collectAsStateWithLifecycle()
-    val connecting by vm.isConnecting.collectAsStateWithLifecycle()
-    val syncing by vm.isSyncing.collectAsStateWithLifecycle()
-    val startWeight by vm.startWeight.collectAsStateWithLifecycle()
-    val discoveredStart by vm.discoveredStartWeight.collectAsStateWithLifecycle()
-    var showSettings by remember { mutableStateOf(false) }
 
     // Consume a deep-link callback (oauth_verifier) exactly once.
     LaunchedEffect(callbackUri.value) {
@@ -86,6 +99,16 @@ private fun AppRoot(vm: FatSecretViewModel, callbackUri: MutableState<Uri?>) {
             }
         }
     }
+}
+
+@Composable
+private fun AppRoot(vm: FatSecretViewModel) {
+    val state by vm.uiState.collectAsStateWithLifecycle()
+    val connecting by vm.isConnecting.collectAsStateWithLifecycle()
+    val syncing by vm.isSyncing.collectAsStateWithLifecycle()
+    val startWeight by vm.startWeight.collectAsStateWithLifecycle()
+    val discoveredStart by vm.discoveredStartWeight.collectAsStateWithLifecycle()
+    var showSettings by remember { mutableStateOf(false) }
 
     Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
         if (showSettings) {

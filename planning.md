@@ -1,6 +1,6 @@
 # Plano de Evolução — WidgetFatSecret → Nutri Insights
 
-> **Status:** Etapas 0, 1 e 2 implementadas (ver §9). Etapas 3–11 seguem apenas
+> **Status:** Etapas 0, 1, 2 e 3 implementadas (ver §9). Etapas 4–11 seguem apenas
 > planejadas, aguardando aprovação para prosseguir.
 > **Premissa central:** os widgets de tela inicial são o que já funciona hoje e são
 > intocáveis. Toda a evolução é **aditiva** — nada da infraestrutura atual é removido
@@ -400,6 +400,8 @@ Etapa 11 Remoção do legado
   neste ambiente; os tokens seguem os hex do protótipo, mas a conferência visual
   final fica para quando houver IDE/dispositivo.
 
+### Etapa 3 — Casca de navegação ✅ concluída (2026-07-25)
+
 - **Objetivo:** `AppShell` com 5 abas + rota de Metas/Conta, todas com placeholder.
 - **Arquivos afetados:** `MainActivity.kt` (só o corpo do `setContent`),
   *novos* `ui/navigation/AppShell.kt`, `ui/navigation/Routes.kt`,
@@ -415,6 +417,41 @@ Etapa 11 Remoção do legado
 - **Build e testes:** `:app:testDebugUnitTest`, `:app:assembleDebug`.
   **Checklist crítico de widget:** tocar no corpo de cada widget, em cada estado
   (conectado, desconectado, erro, sem registros), deve abrir o app.
+- **Status real:** implementado como planejado.
+  [`ui/navigation/Routes.kt`](app/src/main/java/com/example/widgetfatsecret/ui/navigation/Routes.kt)
+  define as 6 rotas tipadas (`@Serializable data object` dentro de um
+  `sealed interface Route`, exigiu `navigation-compose 2.8.9` — a versão que
+  já estava disponível localmente era 2.7.7, sem suporte a rotas tipadas, então
+  a versão foi resolvida via rede para 2.8.9).
+  [`ui/navigation/AppShell.kt`](app/src/main/java/com/example/widgetfatsecret/ui/navigation/AppShell.kt)
+  monta `Scaffold` + `TopAppBar` (avatar circular "⚙" abrindo *Metas e conta*) +
+  `NavigationBar` de 5 abas (oculta na rota de Metas/Conta) + `NavHost`, todas
+  as 6 rotas mostrando `EmptyState` (reaproveitado da Etapa 2) com uma frase
+  apontando para a etapa que vai preenchê-las. Nenhum ícone de
+  `material-icons-extended` foi usado (dependência não existe no projeto) — os
+  rótulos de aba usam a primeira letra do nome como "ícone" textual, seguindo a
+  regra do slide 4 (todo estado carrega rótulo, nunca só cor/ícone).
+  `MainActivity.kt` teve **apenas o corpo do `setContent`** alterado: a classe,
+  `onNewIntent`, `launchMode`, `callbackUri` e `enableEdgeToEdge` são
+  exatamente os mesmos. O tratamento do deep link OAuth e dos eventos do
+  `FatSecretViewModel` (`OpenBrowser`/`Message`) foi extraído para um
+  composable `OAuthCallbackAndEventEffects`, chamado **fora** de
+  `AppRoot`/`AppShell` (direto no `setContent`), para continuar funcionando
+  idêntico não importa qual UI está ativa. `USE_LEGACY_UI = false` — a nova
+  casca é a UI padrão; alternar para `true` e recompilar volta à UI antiga
+  (`AppRoot`, preservada literalmente, só sem mais o parâmetro `callbackUri`
+  que subiu para o `setContent`).
+  **Nenhum widget, receiver, DataStore ou o manifesto foram tocados** — regra
+  de ouro reverificada (`grep` sem hits de `ui.*` em `fatsecret/`).
+  `:app:testDebugUnitTest` (68 testes, inalterados) e `:app:assembleDebug`
+  verdes.
+  **Pendência:** o checklist manual de `docs/widget-smoke-test.md` (itens 1–12,
+  incluindo o ciclo completo 9–12 exigido nesta etapa) segue **não executado**
+  neste ambiente por falta de dispositivo/emulador — mesma limitação já
+  registrada nas Etapas 0–2. Como nenhum arquivo de widget/manifesto foi
+  alterado, o risco é baixo, mas o checklist continua formalmente pendente e
+  deve ser confirmado num dispositivo real antes da Etapa 5 (que é quando a
+  UI nova ganha um botão de conectar/desconectar de verdade).
 
 ---
 
